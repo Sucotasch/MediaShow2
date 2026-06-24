@@ -1,3 +1,4 @@
 #include <winuser.h>
-2 RT_MANIFEST "app.manifest"
+// Manifest disabled — SxS assembly dependency causes TC plugin load failure
+// 2 RT_MANIFEST "app.manifest"
 
