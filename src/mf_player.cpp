@@ -82,25 +82,6 @@ static void ReleaseGraph(tagMFPlayer* p) {
     if (p->pGraph)      { p->pGraph->Release();      p->pGraph      = NULL; }
 }
 
-// Helper: force renderer window to be a proper WS_CHILD of hVideoWnd.
-// DirectShow's put_WindowStyle uses SetWindowLong(GWL_STYLE) which caches
-// the change. MSDN requires SetWindowPos with SWP_FRAMECHANGED to flush.
-// Without this, the renderer keeps WS_POPUP and renders outside the parent.
-static void ForceRendererChildStyle(IVideoWindow* pVW, HWND hVideoWnd) {
-    if (!pVW || !hVideoWnd) return;
-    HWND hChild = FindWindowEx(hVideoWnd, NULL, NULL, NULL);
-    if (!hChild) return;
-    LONG style = GetWindowLong(hChild, GWL_STYLE);
-    if (!(style & WS_CHILD) || (style & WS_POPUP)) {
-        style = (style & ~WS_POPUP) | WS_CHILD | WS_CLIPSIBLINGS;
-        SetWindowLong(hChild, GWL_STYLE, style);
-    }
-    RECT rc;
-    GetClientRect(hVideoWnd, &rc);
-    SetWindowPos(hChild, NULL, 0, 0, rc.right, rc.bottom,
-        SWP_FRAMECHANGED | SWP_NOZORDER);
-}
-
 void MFPlayer_Destroy(MFPlayer* player) {
     if (!player) return;
     tagMFPlayer* p = (tagMFPlayer*)player;
@@ -133,15 +114,18 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
 
     p->pGraph->QueryInterface(IID_IVideoWindow, (void**)&p->pVideoWindow);
     if (p->pVideoWindow) {
-        p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
-        p->pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
+        // Keep renderer as WS_POPUP — DirectShow ignores WS_CHILD style.
+        // Do NOT call put_Owner: coordinates will be screen-relative.
+        p->pVideoWindow->put_WindowStyle(WS_POPUP);
         p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
 
+        // Position using screen coordinates of hVideoWnd's client area
+        POINT pt = { 0, 0 };
+        ClientToScreen(p->hVideoWnd, &pt);
         RECT rc;
         GetClientRect(p->hVideoWnd, &rc);
-        p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
+        p->pVideoWindow->SetWindowPosition(pt.x, pt.y, rc.right, rc.bottom);
         p->pVideoWindow->put_Visible(OATRUE);
-        ForceRendererChildStyle(p->pVideoWindow, p->hVideoWnd);
     }
 
     // Query IBasicVideo for native dimensions (aspect ratio preservation)
@@ -305,6 +289,8 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
         }
     }
 
-    p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
-    ForceRendererChildStyle(p->pVideoWindow, p->hVideoWnd);
+    // Convert to screen coordinates — renderer is WS_POPUP, not a child
+    POINT origin = { 0, 0 };
+    ClientToScreen(p->hVideoWnd, &origin);
+    p->pVideoWindow->SetWindowPosition(origin.x + vx, origin.y + vy, vw, vh);
 }
