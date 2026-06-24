@@ -17,6 +17,7 @@ struct tagDSPlayer {
     IBasicAudio*      pAudio;
     IBasicVideo*      pBasicVideo;   // native video size for aspect ratio
     HWND              hVideoWnd;
+    HWND              hRenderWnd;    // DirectShow renderer HWND
     DSEndCallback     onEnd;
     void*             userData;
     BOOL              isOpen;
@@ -118,21 +119,43 @@ HRESULT DSPlayer_Open(DSPlayer* player, const WCHAR* filePath) {
 
     p->pGraph->QueryInterface(IID_IVideoWindow, (void**)&p->pVideoWindow);
     if (p->pVideoWindow) {
-        // Use IVideoWindow properties for popup positioning (screen coords).
-        // Do NOT call put_Owner — DirectShow ignores WS_CHILD style anyway.
-        p->pVideoWindow->put_WindowStyle(WS_POPUP);
+        p->pVideoWindow->put_Visible(OATRUE);
+        p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
         p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
 
-        POINT pt = { 0, 0 };
-        ClientToScreen(p->hVideoWnd, &pt);
-        RECT rc;
-        GetClientRect(p->hVideoWnd, &rc);
+        // Try FindWindowEx first
+        p->hRenderWnd = FindWindowEx(p->hVideoWnd, NULL, NULL, NULL);
 
-        p->pVideoWindow->put_Left(pt.x);
-        p->pVideoWindow->put_Top(pt.y);
-        p->pVideoWindow->put_Width(rc.right);
-        p->pVideoWindow->put_Height(rc.bottom);
-        p->pVideoWindow->put_Visible(OATRUE);
+        if (!p->hRenderWnd) {
+            // Renderer is top-level popup — find by owner
+            struct FindCtx { HWND hOwner; HWND hFound; };
+            FindCtx ctx = { p->hVideoWnd, NULL };
+            EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
+                FindCtx* c = (FindCtx*)lParam;
+                HWND hOwn = (HWND)GetWindowLongPtr(hwnd, GWLP_HWNDPARENT);
+                if (hOwn == c->hOwner) {
+                    LONG s = GetWindowLong(hwnd, GWL_STYLE);
+                    if ((s & WS_POPUP) && (s & WS_VISIBLE)) {
+                        c->hFound = hwnd;
+                        return FALSE;
+                    }
+                }
+                return TRUE;
+            }, (LPARAM)&ctx);
+            p->hRenderWnd = ctx.hFound;
+            if (p->hRenderWnd)
+                SetParent(p->hRenderWnd, p->hVideoWnd);
+        }
+
+        if (p->hRenderWnd) {
+            RECT rc;
+            GetClientRect(p->hVideoWnd, &rc);
+            LONG style = GetWindowLong(p->hRenderWnd, GWL_STYLE);
+            style = (style & ~WS_POPUP) | WS_CHILD | WS_CLIPSIBLINGS;
+            SetWindowLong(p->hRenderWnd, GWL_STYLE, style);
+            SetWindowPos(p->hRenderWnd, NULL, 0, 0, rc.right, rc.bottom,
+                SWP_FRAMECHANGED | SWP_NOZORDER);
+        }
     }
 
     // Query IBasicVideo for native dimensions (aspect ratio preservation)
@@ -279,11 +302,15 @@ void DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc) {
         }
     }
 
-    // Convert to screen coordinates — renderer is WS_POPUP, not a child
-    POINT origin = { 0, 0 };
-    ClientToScreen(p->hVideoWnd, &origin);
-    p->pVideoWindow->put_Left(origin.x + vx);
-    p->pVideoWindow->put_Top(origin.y + vy);
-    p->pVideoWindow->put_Width(vw);
-    p->pVideoWindow->put_Height(vh);
+    if (p->hRenderWnd) {
+        SetWindowPos(p->hRenderWnd, NULL, vx, vy, vw, vh,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    } else {
+        POINT origin = { 0, 0 };
+        ClientToScreen(p->hVideoWnd, &origin);
+        p->pVideoWindow->put_Left(origin.x + vx);
+        p->pVideoWindow->put_Top(origin.y + vy);
+        p->pVideoWindow->put_Width(vw);
+        p->pVideoWindow->put_Height(vh);
+    }
 }

@@ -15,6 +15,7 @@ struct tagMFPlayer {
     IBasicAudio*      pAudio;
     IBasicVideo*      pBasicVideo;   // for native video size (aspect ratio)
     HWND              hVideoWnd;
+    HWND              hRenderWnd;    // DirectShow renderer HWND (found via EnumWindows)
     MFPlayerEndCallback onEnd;
     void*             userData;
     BOOL              isOpen;
@@ -114,21 +115,61 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
 
     p->pGraph->QueryInterface(IID_IVideoWindow, (void**)&p->pVideoWindow);
     if (p->pVideoWindow) {
-        // Use IVideoWindow properties for popup positioning (screen coords).
-        // Do NOT call put_Owner — DirectShow ignores WS_CHILD style anyway.
-        p->pVideoWindow->put_WindowStyle(WS_POPUP);
+        // Step 1: Show the renderer so its HWND becomes available
+        p->pVideoWindow->put_Visible(OATRUE);
+
+        // Step 2: Use IVideoWindow to reparent
+        p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
         p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
 
-        POINT pt = { 0, 0 };
-        ClientToScreen(p->hVideoWnd, &pt);
-        RECT rc;
-        GetClientRect(p->hVideoWnd, &rc);
+        // Step 3: Find the renderer HWND.
+        // After put_Owner, the renderer should be a child of hVideoWnd.
+        // But DirectShow's Video Renderer may resist — it sometimes keeps
+        // WS_POPUP and doesn't actually become a child.
+        p->hRenderWnd = FindWindowEx(p->hVideoWnd, NULL, NULL, NULL);
 
-        p->pVideoWindow->put_Left(pt.x);
-        p->pVideoWindow->put_Top(pt.y);
-        p->pVideoWindow->put_Width(rc.right);
-        p->pVideoWindow->put_Height(rc.bottom);
-        p->pVideoWindow->put_Visible(OATRUE);
+        if (p->hRenderWnd) {
+            // Renderer IS a child — force proper style and size
+            RECT rc;
+            GetClientRect(p->hVideoWnd, &rc);
+            LONG style = GetWindowLong(p->hRenderWnd, GWL_STYLE);
+            style = (style & ~WS_POPUP) | WS_CHILD | WS_CLIPSIBLINGS;
+            SetWindowLong(p->hRenderWnd, GWL_STYLE, style);
+            SetWindowPos(p->hRenderWnd, NULL, 0, 0, rc.right, rc.bottom,
+                SWP_FRAMECHANGED | SWP_NOZORDER);
+        } else {
+            // Renderer is NOT a child — it's a top-level popup.
+            // Find it by enumerating top-level windows and checking ownership.
+            struct FindCtx { HWND hOwner; HWND hFound; };
+            FindCtx ctx = { p->hVideoWnd, NULL };
+            EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
+                FindCtx* c = (FindCtx*)lParam;
+                // Check if this window's owner is hVideoWnd
+                HWND hOwn = (HWND)GetWindowLongPtr(hwnd, GWLP_HWNDPARENT);
+                if (hOwn == c->hOwner) {
+                    // Verify it's a visible popup window (the renderer)
+                    LONG s = GetWindowLong(hwnd, GWL_STYLE);
+                    if ((s & WS_POPUP) && (s & WS_VISIBLE)) {
+                        c->hFound = hwnd;
+                        return FALSE; // stop
+                    }
+                }
+                return TRUE; // continue
+            }, (LPARAM)&ctx);
+            p->hRenderWnd = ctx.hFound;
+
+            if (p->hRenderWnd) {
+                // Reparent the popup into hVideoWnd via raw Win32
+                SetParent(p->hRenderWnd, p->hVideoWnd);
+                RECT rc;
+                GetClientRect(p->hVideoWnd, &rc);
+                LONG style = GetWindowLong(p->hRenderWnd, GWL_STYLE);
+                style = (style & ~WS_POPUP) | WS_CHILD | WS_CLIPSIBLINGS;
+                SetWindowLong(p->hRenderWnd, GWL_STYLE, style);
+                SetWindowPos(p->hRenderWnd, NULL, 0, 0, rc.right, rc.bottom,
+                    SWP_FRAMECHANGED | SWP_NOZORDER);
+            }
+        }
     }
 
     // Query IBasicVideo for native dimensions (aspect ratio preservation)
@@ -292,11 +333,17 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
         }
     }
 
-    // Convert to screen coordinates — renderer is WS_POPUP, not a child
-    POINT origin = { 0, 0 };
-    ClientToScreen(p->hVideoWnd, &origin);
-    p->pVideoWindow->put_Left(origin.x + vx);
-    p->pVideoWindow->put_Top(origin.y + vy);
-    p->pVideoWindow->put_Width(vw);
-    p->pVideoWindow->put_Height(vh);
+    if (p->hRenderWnd) {
+        // Direct Win32 positioning — most reliable
+        SetWindowPos(p->hRenderWnd, NULL, vx, vy, vw, vh,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    } else {
+        // Fallback: IVideoWindow properties (unreliable on some renderers)
+        POINT origin = { 0, 0 };
+        ClientToScreen(p->hVideoWnd, &origin);
+        p->pVideoWindow->put_Left(origin.x + vx);
+        p->pVideoWindow->put_Top(origin.y + vy);
+        p->pVideoWindow->put_Width(vw);
+        p->pVideoWindow->put_Height(vh);
+    }
 }
