@@ -6,8 +6,6 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleaut32.lib")
 
-// Defect #6 fix: removed global g_comInitialized — COM is initialised per-thread
-
 struct tagDSPlayer {
     IGraphBuilder*    pGraph;
     IMediaControl*    pControl;
@@ -15,8 +13,9 @@ struct tagDSPlayer {
     IMediaSeeking*    pSeeking;
     IVideoWindow*     pVideoWindow;
     IBasicAudio*      pAudio;
-    IBasicVideo*      pBasicVideo;   // native video size for aspect ratio
+    IBasicVideo*      pBasicVideo;
     HWND              hVideoWnd;
+    HWND              hRenderWnd;
     DSEndCallback     onEnd;
     void*             userData;
     BOOL              isOpen;
@@ -26,12 +25,10 @@ struct tagDSPlayer {
     volatile BOOL     stopThread;
 };
 
-// EventThread: worker thread, must initialise COM independently.
 static DWORD WINAPI EventThread(LPVOID lpParam) {
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     tagDSPlayer* p = (tagDSPlayer*)lpParam;
     long evCode = 0;
-
     while (!p->stopThread) {
         if (p->pEvent) {
             HRESULT hr = p->pEvent->WaitForCompletion(100, &evCode);
@@ -57,7 +54,6 @@ DSPlayer* DSPlayer_Create(HWND hVideoWnd, DSEndCallback onEnd, void* userData) {
     return (DSPlayer*)p;
 }
 
-// Helper: stop and join event thread safely
 static void DS_StopEventThread(tagDSPlayer* p) {
     if (!p->hEventThread) return;
     p->stopThread = TRUE;
@@ -67,11 +63,11 @@ static void DS_StopEventThread(tagDSPlayer* p) {
     p->stopThread = FALSE;
 }
 
-// Helper: release all DirectShow graph interfaces
 static void DS_ReleaseGraph(tagDSPlayer* p) {
+    p->hRenderWnd = NULL;
     if (p->pVideoWindow) {
         p->pVideoWindow->put_Visible(OAFALSE);
-        p->pVideoWindow->put_Owner((OAHWND)0);
+        p->pVideoWindow->put_Owner(0);
         p->pVideoWindow->Release();
         p->pVideoWindow = NULL;
     }
@@ -92,17 +88,40 @@ void DSPlayer_Destroy(DSPlayer* player) {
     free(p);
 }
 
+struct EnumCtx { HWND hExclude; HWND hFound; };
+static BOOL CALLBACK EnumFindPopup(HWND hwnd, LPARAM lParam) {
+    EnumCtx* ctx = (EnumCtx*)lParam;
+    if (hwnd == ctx->hExclude) return TRUE;
+    HWND hParent = (HWND)GetWindowLongPtr(hwnd, GWLP_HWNDPARENT);
+    if (hParent == ctx->hExclude) {
+        LONG s = GetWindowLong(hwnd, GWL_STYLE);
+        if ((s & WS_POPUP) && (s & WS_VISIBLE)) {
+            ctx->hFound = hwnd;
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static void ForceChildStyle(HWND hChild, HWND hParent) {
+    if (!hChild || !hParent) return;
+    SetParent(hChild, hParent);
+    LONG style = GetWindowLong(hChild, GWL_STYLE);
+    style = (style & ~WS_POPUP) | WS_CHILD | WS_CLIPSIBLINGS;
+    SetWindowLong(hChild, GWL_STYLE, style);
+    RECT rc;
+    GetClientRect(hParent, &rc);
+    SetWindowPos(hChild, NULL, 0, 0, rc.right, rc.bottom,
+        SWP_FRAMECHANGED | SWP_NOZORDER);
+}
+
 HRESULT DSPlayer_Open(DSPlayer* player, const WCHAR* filePath) {
     if (!player || !filePath) return E_INVALIDARG;
     tagDSPlayer* p = (tagDSPlayer*)player;
 
-    // Defect #5 fix: stop event thread BEFORE releasing COM interfaces
     DSPlayer_Stop(player);
     DS_StopEventThread(p);
     DS_ReleaseGraph(p);
-
-    // Defect #6 fix: removed per-call CoInitializeEx; COM is initialised
-    // on the UI thread by TC and per-thread in EventThread.
 
     HRESULT hr = CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
         IID_IGraphBuilder, (void**)&p->pGraph);
@@ -117,19 +136,28 @@ HRESULT DSPlayer_Open(DSPlayer* player, const WCHAR* filePath) {
     if (FAILED(hr)) { DS_ReleaseGraph(p); return hr; }
 
     p->pGraph->QueryInterface(IID_IVideoWindow, (void**)&p->pVideoWindow);
+    p->pGraph->QueryInterface(IID_IBasicVideo,  (void**)&p->pBasicVideo);
+
     if (p->pVideoWindow) {
-        p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
-        p->pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
-        p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
-
-        RECT rc;
-        GetClientRect(p->hVideoWnd, &rc);
-        p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
         p->pVideoWindow->put_Visible(OATRUE);
-    }
 
-    // Query IBasicVideo for native dimensions (aspect ratio preservation)
-    p->pGraph->QueryInterface(IID_IBasicVideo, (void**)&p->pBasicVideo);
+        EnumCtx ctx = { p->hVideoWnd, NULL };
+        EnumWindows(EnumFindPopup, (LPARAM)&ctx);
+        p->hRenderWnd = ctx.hFound;
+
+        if (p->hRenderWnd) {
+            ForceChildStyle(p->hRenderWnd, p->hVideoWnd);
+        } else {
+            p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
+            p->pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
+            p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
+            RECT rc;
+            GetClientRect(p->hVideoWnd, &rc);
+            p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
+        }
+
+        p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
+    }
 
     p->isOpen    = TRUE;
     p->isPlaying = FALSE;
@@ -227,12 +255,9 @@ double DSPlayer_GetPosition(DSPlayer* player) {
     return pos / 10000000.0;
 }
 
-// Defect #10 fix: compute letterbox/pillarbox rect to preserve aspect ratio.
-// Defect fix: handle NULL rc by reading hVideoWnd client rect.
 void DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc) {
     if (!player) return;
     tagDSPlayer* p = (tagDSPlayer*)player;
-    if (!p->pVideoWindow) return;
 
     RECT wrc;
     if (rc) {
@@ -254,23 +279,23 @@ void DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc) {
         if (SUCCEEDED(p->pBasicVideo->get_VideoWidth(&natW)) &&
             SUCCEEDED(p->pBasicVideo->get_VideoHeight(&natH)) &&
             natW > 0 && natH > 0) {
-
             double srcAr = (double)natW / (double)natH;
             double dstAr = (double)cw   / (double)ch;
-
             if (srcAr > dstAr) {
                 vw = cw;
                 vh = (int)((double)cw / srcAr);
-                vx = 0;
                 vy = (ch - vh) / 2;
             } else {
                 vh = ch;
                 vw = (int)((double)ch * srcAr);
                 vx = (cw - vw) / 2;
-                vy = 0;
             }
         }
     }
 
-    p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
+    if (p->hRenderWnd) {
+        SetWindowPos(p->hRenderWnd, NULL, vx, vy, vw, vh, SWP_NOZORDER);
+    } else if (p->pVideoWindow) {
+        p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
+    }
 }
