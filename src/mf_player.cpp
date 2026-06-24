@@ -146,8 +146,6 @@ HRESULT MFPlayer_Seek(MFPlayer* player, double seconds) {
     pv.vt = VT_I8;
     pv.hVal.QuadPart = (LONGLONG)(seconds * 10000000.0);
     HRESULT hr = p->pPlayer->SetPosition(MFP_POSITIONTYPE_100NS, &pv);
-    TCHAR buf[128]; wsprintf(buf, TEXT("MS2: Seek to %.1f sec, hr=0x%08X\n"), seconds, hr);
-    OutputDebugString(buf);
     PropVariantClear(&pv);
     return hr;
 }
@@ -171,28 +169,36 @@ BOOL MFPlayer_IsPaused(MFPlayer* player) {
     return (BOOL)InterlockedCompareExchange(&((tagMFPlayer*)player)->isPaused, 0, 0);
 }
 
-static ULONGLONG ReadPropVariantU64(PROPVARIANT* pv) {
-    if (pv->vt == VT_UI8) return pv->uhVal.QuadPart;
-    if (pv->vt == VT_I8)  return (ULONGLONG)pv->hVal.QuadPart;
-    return 0;
-}
-
 double MFPlayer_GetDuration(MFPlayer* player) {
     if (!player) return 0;
     tagMFPlayer* p = (tagMFPlayer*)player;
     if (!p->pPlayer) return 0;
+    // Try IMFMediaItem for reliable duration
+    IMFPMediaItem* pItem = NULL;
+    HRESULT hr = p->pPlayer->GetMediaItem(&pItem);
+    if (SUCCEEDED(hr) && pItem) {
+        PROPVARIANT pv;
+        PropVariantInit(&pv);
+        hr = pItem->GetDuration(MFP_POSITIONTYPE_100NS, &pv);
+        pItem->Release();
+        if (SUCCEEDED(hr) && pv.vt == VT_I8) {
+            double dur = pv.hVal.QuadPart / 10000000.0;
+            PropVariantClear(&pv);
+            return dur;
+        }
+        PropVariantClear(&pv);
+    }
+    // Fallback
     PROPVARIANT pv;
     PropVariantInit(&pv);
-    HRESULT hr = p->pPlayer->GetDuration(MFP_POSITIONTYPE_100NS, &pv);
-    double dur = 0;
-    if (SUCCEEDED(hr)) {
-        dur = ReadPropVariantU64(&pv) / 10000000.0;
+    hr = p->pPlayer->GetDuration(MFP_POSITIONTYPE_100NS, &pv);
+    if (SUCCEEDED(hr) && pv.vt == VT_I8) {
+        double dur = pv.hVal.QuadPart / 10000000.0;
+        PropVariantClear(&pv);
+        return dur;
     }
-    TCHAR buf[128]; wsprintf(buf, TEXT("MS2: GetDuration hr=0x%08X vt=%d val=%I64d dur=%.1f\n"),
-        hr, pv.vt, ReadPropVariantU64(&pv), dur);
-    OutputDebugString(buf);
     PropVariantClear(&pv);
-    return dur;
+    return 0;
 }
 
 double MFPlayer_GetPosition(MFPlayer* player) {
@@ -202,15 +208,13 @@ double MFPlayer_GetPosition(MFPlayer* player) {
     PROPVARIANT pv;
     PropVariantInit(&pv);
     HRESULT hr = p->pPlayer->GetPosition(MFP_POSITIONTYPE_100NS, &pv);
-    double pos = 0;
-    if (SUCCEEDED(hr)) {
-        pos = ReadPropVariantU64(&pv) / 10000000.0;
+    if (SUCCEEDED(hr) && pv.vt == VT_I8) {
+        double pos = pv.hVal.QuadPart / 10000000.0;
+        PropVariantClear(&pv);
+        return pos;
     }
-    TCHAR buf[128]; wsprintf(buf, TEXT("MS2: GetPosition hr=0x%08X vt=%d val=%I64d pos=%.1f\n"),
-        hr, pv.vt, ReadPropVariantU64(&pv), pos);
-    OutputDebugString(buf);
     PropVariantClear(&pv);
-    return pos;
+    return 0;
 }
 
 HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* height) {
