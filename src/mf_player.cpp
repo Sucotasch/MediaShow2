@@ -146,6 +146,13 @@ HRESULT MFPlayer_Seek(MFPlayer* player, double seconds) {
     pv.vt = VT_I8;
     pv.hVal.QuadPart = (LONGLONG)(seconds * 10000000.0);
     HRESULT hr = p->pPlayer->SetPosition(MFP_POSITIONTYPE_100NS, &pv);
+    if (FAILED(hr)) {
+        // Try VT_UI8 variant
+        PropVariantInit(&pv);
+        pv.vt = VT_UI8;
+        pv.uhVal.QuadPart = (ULONGLONG)(seconds * 10000000.0);
+        hr = p->pPlayer->SetPosition(MFP_POSITIONTYPE_100NS, &pv);
+    }
     PropVariantClear(&pv);
     return hr;
 }
@@ -192,10 +199,12 @@ double MFPlayer_GetDuration(MFPlayer* player) {
     PROPVARIANT pv;
     PropVariantInit(&pv);
     hr = p->pPlayer->GetDuration(MFP_POSITIONTYPE_100NS, &pv);
-    if (SUCCEEDED(hr) && pv.vt == VT_I8) {
-        double dur = pv.hVal.QuadPart / 10000000.0;
+    if (SUCCEEDED(hr)) {
+        LONGLONG val = 0;
+        if (pv.vt == VT_I8)  val = pv.hVal.QuadPart;
+        else if (pv.vt == VT_UI8) val = (LONGLONG)pv.uhVal.QuadPart;
         PropVariantClear(&pv);
-        return dur;
+        if (val > 0) return val / 10000000.0;
     }
     PropVariantClear(&pv);
     return 0;
@@ -208,10 +217,12 @@ double MFPlayer_GetPosition(MFPlayer* player) {
     PROPVARIANT pv;
     PropVariantInit(&pv);
     HRESULT hr = p->pPlayer->GetPosition(MFP_POSITIONTYPE_100NS, &pv);
-    if (SUCCEEDED(hr) && pv.vt == VT_I8) {
-        double pos = pv.hVal.QuadPart / 10000000.0;
+    if (SUCCEEDED(hr)) {
+        LONGLONG val = 0;
+        if (pv.vt == VT_I8)  val = pv.hVal.QuadPart;
+        else if (pv.vt == VT_UI8) val = (LONGLONG)pv.uhVal.QuadPart;
         PropVariantClear(&pv);
-        return pos;
+        if (val > 0) return val / 10000000.0;
     }
     PropVariantClear(&pv);
     return 0;
