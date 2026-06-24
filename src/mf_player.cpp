@@ -13,8 +13,9 @@ struct tagMFPlayer {
     IMediaSeeking*    pSeeking;
     IVideoWindow*     pVideoWindow;
     IBasicAudio*      pAudio;
-    IBasicVideo*      pBasicVideo;   // for native video size (aspect ratio)
+    IBasicVideo*      pBasicVideo;
     HWND              hVideoWnd;
+    HWND              hRenderWnd;
     MFPlayerEndCallback onEnd;
     void*             userData;
     BOOL              isOpen;
@@ -24,13 +25,10 @@ struct tagMFPlayer {
     volatile LONG     stopThread;
 };
 
-// EventThread: runs on a worker thread, must initialise COM independently.
-// Signals completion via callback marshalled to the UI thread by the caller.
 static DWORD WINAPI EventThread(LPVOID lpParam) {
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     tagMFPlayer* p = (tagMFPlayer*)lpParam;
     long evCode = 0;
-
     while (!InterlockedCompareExchange(&p->stopThread, 0, 0)) {
         if (p->pEvent) {
             HRESULT hr = p->pEvent->WaitForCompletion(100, &evCode);
@@ -56,7 +54,6 @@ MFPlayer* MFPlayer_Create(HWND hVideoWnd, MFPlayerEndCallback onEnd, void* userD
     return (MFPlayer*)p;
 }
 
-// Helper: stop and join the event thread safely
 static void StopEventThread(tagMFPlayer* p) {
     if (!p->hEventThread) return;
     InterlockedExchange(&p->stopThread, TRUE);
@@ -66,8 +63,8 @@ static void StopEventThread(tagMFPlayer* p) {
     InterlockedExchange(&p->stopThread, FALSE);
 }
 
-// Helper: release all DirectShow graph interfaces
 static void ReleaseGraph(tagMFPlayer* p) {
+    p->hRenderWnd = NULL;
     if (p->pVideoWindow) {
         p->pVideoWindow->put_Visible(OAFALSE);
         p->pVideoWindow->put_Owner(0);
@@ -91,11 +88,37 @@ void MFPlayer_Destroy(MFPlayer* player) {
     free(p);
 }
 
+struct EnumCtx { HWND hExclude; HWND hFound; };
+static BOOL CALLBACK EnumFindPopup(HWND hwnd, LPARAM lParam) {
+    EnumCtx* ctx = (EnumCtx*)lParam;
+    if (hwnd == ctx->hExclude) return TRUE;
+    HWND hParent = (HWND)GetWindowLongPtr(hwnd, GWLP_HWNDPARENT);
+    if (hParent == ctx->hExclude) {
+        LONG s = GetWindowLong(hwnd, GWL_STYLE);
+        if ((s & WS_POPUP) && (s & WS_VISIBLE)) {
+            ctx->hFound = hwnd;
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static void ForceChildStyle(HWND hChild, HWND hParent) {
+    if (!hChild || !hParent) return;
+    SetParent(hChild, hParent);
+    LONG style = GetWindowLong(hChild, GWL_STYLE);
+    style = (style & ~WS_POPUP) | WS_CHILD | WS_CLIPSIBLINGS;
+    SetWindowLong(hChild, GWL_STYLE, style);
+    RECT rc;
+    GetClientRect(hParent, &rc);
+    SetWindowPos(hChild, NULL, 0, 0, rc.right, rc.bottom,
+        SWP_FRAMECHANGED | SWP_NOZORDER);
+}
+
 HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
     if (!player || !filePath) return E_INVALIDARG;
     tagMFPlayer* p = (tagMFPlayer*)player;
 
-    // Defect #5 fix: always stop event thread BEFORE releasing COM interfaces
     MFPlayer_Stop(player);
     StopEventThread(p);
     ReleaseGraph(p);
@@ -113,19 +136,32 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
     if (FAILED(hr)) { ReleaseGraph(p); return hr; }
 
     p->pGraph->QueryInterface(IID_IVideoWindow, (void**)&p->pVideoWindow);
+    p->pGraph->QueryInterface(IID_IBasicVideo,  (void**)&p->pBasicVideo);
+
     if (p->pVideoWindow) {
-        p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
-        p->pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
-        p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
-
-        RECT rc;
-        GetClientRect(p->hVideoWnd, &rc);
-        p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
+        // Show the renderer so its window exists
         p->pVideoWindow->put_Visible(OATRUE);
-    }
 
-    // Query IBasicVideo for native dimensions (aspect ratio preservation)
-    p->pGraph->QueryInterface(IID_IBasicVideo, (void**)&p->pBasicVideo);
+        // Find the renderer popup window by diffing top-level windows
+        EnumCtx ctx = { p->hVideoWnd, NULL };
+        EnumWindows(EnumFindPopup, (LPARAM)&ctx);
+        p->hRenderWnd = ctx.hFound;
+
+        if (p->hRenderWnd) {
+            // Reparent via Win32 and force child style
+            ForceChildStyle(p->hRenderWnd, p->hVideoWnd);
+        } else {
+            // Fallback: use IVideoWindow (may render outside)
+            p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
+            p->pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
+            p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
+            RECT rc;
+            GetClientRect(p->hVideoWnd, &rc);
+            p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
+        }
+
+        p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
+    }
 
     p->isOpen = TRUE;
     InterlockedExchange(&p->isPlaying, FALSE);
@@ -189,7 +225,6 @@ HRESULT MFPlayer_SetVolume(MFPlayer* player, float volume) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
     if (!p->pAudio) return E_FAIL;
-    // DirectShow IBasicAudio volume: 0 dB = 0, full silence = -10000
     long dsVol = (volume <= 0.0f) ? -10000 : (long)(-10000.0 * (1.0 - volume));
     return p->pAudio->put_Volume(dsVol);
 }
@@ -227,7 +262,6 @@ double MFPlayer_GetPosition(MFPlayer* player) {
 HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* height) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    // Use IBasicVideo for native (source) dimensions, not window dimensions
     if (!p->pBasicVideo) return E_FAIL;
     long vidW = 0, vidH = 0;
     HRESULT hr = p->pBasicVideo->get_VideoWidth(&vidW);
@@ -239,11 +273,9 @@ HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* heig
     return hr;
 }
 
-// Defect #10 fix: compute letterbox/pillarbox rect to preserve aspect ratio
 void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     if (!player) return;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pVideoWindow) return;
 
     RECT wrc;
     if (rc) {
@@ -265,25 +297,23 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
         if (SUCCEEDED(p->pBasicVideo->get_VideoWidth(&natW)) &&
             SUCCEEDED(p->pBasicVideo->get_VideoHeight(&natH)) &&
             natW > 0 && natH > 0) {
-
             double srcAr = (double)natW / (double)natH;
             double dstAr = (double)cw   / (double)ch;
-
             if (srcAr > dstAr) {
-                // wider than container: letterbox top+bottom
                 vw = cw;
                 vh = (int)((double)cw / srcAr);
-                vx = 0;
                 vy = (ch - vh) / 2;
             } else {
-                // taller than container: pillarbox left+right
                 vh = ch;
                 vw = (int)((double)ch * srcAr);
                 vx = (cw - vw) / 2;
-                vy = 0;
             }
         }
     }
 
-    p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
+    if (p->hRenderWnd) {
+        SetWindowPos(p->hRenderWnd, NULL, vx, vy, vw, vh, SWP_NOZORDER);
+    } else if (p->pVideoWindow) {
+        p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
+    }
 }
