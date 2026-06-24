@@ -1,4 +1,3 @@
 #include <winuser.h>
-// DLL manifest disabled to avoid SxS load issues
-// 2 RT_MANIFEST "app.manifest"
+2 RT_MANIFEST "app.manifest"
 

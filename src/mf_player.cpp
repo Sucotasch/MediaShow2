@@ -82,6 +82,25 @@ static void ReleaseGraph(tagMFPlayer* p) {
     if (p->pGraph)      { p->pGraph->Release();      p->pGraph      = NULL; }
 }
 
+// Helper: force renderer window to be a proper WS_CHILD of hVideoWnd.
+// DirectShow's put_WindowStyle uses SetWindowLong(GWL_STYLE) which caches
+// the change. MSDN requires SetWindowPos with SWP_FRAMECHANGED to flush.
+// Without this, the renderer keeps WS_POPUP and renders outside the parent.
+static void ForceRendererChildStyle(IVideoWindow* pVW, HWND hVideoWnd) {
+    if (!pVW || !hVideoWnd) return;
+    HWND hChild = FindWindowEx(hVideoWnd, NULL, NULL, NULL);
+    if (!hChild) return;
+    LONG style = GetWindowLong(hChild, GWL_STYLE);
+    if (!(style & WS_CHILD) || (style & WS_POPUP)) {
+        style = (style & ~WS_POPUP) | WS_CHILD | WS_CLIPSIBLINGS;
+        SetWindowLong(hChild, GWL_STYLE, style);
+    }
+    RECT rc;
+    GetClientRect(hVideoWnd, &rc);
+    SetWindowPos(hChild, NULL, 0, 0, rc.right, rc.bottom,
+        SWP_FRAMECHANGED | SWP_NOZORDER);
+}
+
 void MFPlayer_Destroy(MFPlayer* player) {
     if (!player) return;
     tagMFPlayer* p = (tagMFPlayer*)player;
@@ -122,6 +141,7 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
         GetClientRect(p->hVideoWnd, &rc);
         p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
         p->pVideoWindow->put_Visible(OATRUE);
+        ForceRendererChildStyle(p->pVideoWindow, p->hVideoWnd);
     }
 
     // Query IBasicVideo for native dimensions (aspect ratio preservation)
@@ -286,4 +306,5 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     }
 
     p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
+    ForceRendererChildStyle(p->pVideoWindow, p->hVideoWnd);
 }
