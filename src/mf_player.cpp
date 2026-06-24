@@ -143,9 +143,11 @@ HRESULT MFPlayer_Seek(MFPlayer* player, double seconds) {
     if (!p->pPlayer) return E_FAIL;
     PROPVARIANT pv;
     PropVariantInit(&pv);
-    pv.vt = VT_I8;
-    pv.hVal.QuadPart = (LONGLONG)(seconds * 10000000.0);
-    return p->pPlayer->SetPosition(MFP_POSITIONTYPE_100NS, &pv);
+    pv.vt = VT_UI8;
+    pv.uhVal.QuadPart = (ULONGLONG)(seconds * 10000000.0);
+    HRESULT hr = p->pPlayer->SetPosition(MFP_POSITIONTYPE_100NS, &pv);
+    PropVariantClear(&pv);
+    return hr;
 }
 
 HRESULT MFPlayer_SetVolume(MFPlayer* player, float volume) {
@@ -173,9 +175,10 @@ double MFPlayer_GetDuration(MFPlayer* player) {
     if (!p->pPlayer) return 0;
     PROPVARIANT pv;
     PropVariantInit(&pv);
+    pv.vt = VT_UI8;
     HRESULT hr = p->pPlayer->GetDuration(MFP_POSITIONTYPE_100NS, &pv);
     if (FAILED(hr)) return 0;
-    double dur = pv.hVal.QuadPart / 10000000.0;
+    double dur = pv.uhVal.QuadPart / 10000000.0;
     PropVariantClear(&pv);
     return dur;
 }
@@ -186,9 +189,10 @@ double MFPlayer_GetPosition(MFPlayer* player) {
     if (!p->pPlayer) return 0;
     PROPVARIANT pv;
     PropVariantInit(&pv);
+    pv.vt = VT_UI8;
     HRESULT hr = p->pPlayer->GetPosition(MFP_POSITIONTYPE_100NS, &pv);
     if (FAILED(hr)) return 0;
-    double pos = pv.hVal.QuadPart / 10000000.0;
+    double pos = pv.uhVal.QuadPart / 10000000.0;
     PropVariantClear(&pv);
     return pos;
 }
