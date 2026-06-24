@@ -114,17 +114,20 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
 
     p->pGraph->QueryInterface(IID_IVideoWindow, (void**)&p->pVideoWindow);
     if (p->pVideoWindow) {
-        // Keep renderer as WS_POPUP — DirectShow ignores WS_CHILD style.
-        // Do NOT call put_Owner: coordinates will be screen-relative.
+        // Use IVideoWindow properties for popup positioning (screen coords).
+        // Do NOT call put_Owner — DirectShow ignores WS_CHILD style anyway.
         p->pVideoWindow->put_WindowStyle(WS_POPUP);
         p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
 
-        // Position using screen coordinates of hVideoWnd's client area
         POINT pt = { 0, 0 };
         ClientToScreen(p->hVideoWnd, &pt);
         RECT rc;
         GetClientRect(p->hVideoWnd, &rc);
-        p->pVideoWindow->SetWindowPosition(pt.x, pt.y, rc.right, rc.bottom);
+
+        p->pVideoWindow->put_Left(pt.x);
+        p->pVideoWindow->put_Top(pt.y);
+        p->pVideoWindow->put_Width(rc.right);
+        p->pVideoWindow->put_Height(rc.bottom);
         p->pVideoWindow->put_Visible(OATRUE);
     }
 
@@ -292,5 +295,8 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     // Convert to screen coordinates — renderer is WS_POPUP, not a child
     POINT origin = { 0, 0 };
     ClientToScreen(p->hVideoWnd, &origin);
-    p->pVideoWindow->SetWindowPosition(origin.x + vx, origin.y + vy, vw, vh);
+    p->pVideoWindow->put_Left(origin.x + vx);
+    p->pVideoWindow->put_Top(origin.y + vy);
+    p->pVideoWindow->put_Width(vw);
+    p->pVideoWindow->put_Height(vh);
 }
