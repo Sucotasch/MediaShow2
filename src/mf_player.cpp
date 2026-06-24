@@ -15,7 +15,6 @@ struct tagMFPlayer {
     IBasicAudio*      pAudio;
     IBasicVideo*      pBasicVideo;
     HWND              hVideoWnd;
-    HWND              hRenderWnd;
     MFPlayerEndCallback onEnd;
     void*             userData;
     BOOL              isOpen;
@@ -64,7 +63,6 @@ static void StopEventThread(tagMFPlayer* p) {
 }
 
 static void ReleaseGraph(tagMFPlayer* p) {
-    p->hRenderWnd = NULL;
     if (p->pVideoWindow) {
         p->pVideoWindow->put_Visible(OAFALSE);
         p->pVideoWindow->put_Owner(0);
@@ -86,33 +84,6 @@ void MFPlayer_Destroy(MFPlayer* player) {
     StopEventThread(p);
     ReleaseGraph(p);
     free(p);
-}
-
-struct EnumCtx { HWND hExclude; HWND hFound; };
-static BOOL CALLBACK EnumFindPopup(HWND hwnd, LPARAM lParam) {
-    EnumCtx* ctx = (EnumCtx*)lParam;
-    if (hwnd == ctx->hExclude) return TRUE;
-    HWND hParent = (HWND)GetWindowLongPtr(hwnd, GWLP_HWNDPARENT);
-    if (hParent == ctx->hExclude) {
-        LONG s = GetWindowLong(hwnd, GWL_STYLE);
-        if ((s & WS_POPUP) && (s & WS_VISIBLE)) {
-            ctx->hFound = hwnd;
-            return FALSE;
-        }
-    }
-    return TRUE;
-}
-
-static void ForceChildStyle(HWND hChild, HWND hParent) {
-    if (!hChild || !hParent) return;
-    SetParent(hChild, hParent);
-    LONG style = GetWindowLong(hChild, GWL_STYLE);
-    style = (style & ~WS_POPUP) | WS_CHILD | WS_CLIPSIBLINGS;
-    SetWindowLong(hChild, GWL_STYLE, style);
-    RECT rc;
-    GetClientRect(hParent, &rc);
-    SetWindowPos(hChild, NULL, 0, 0, rc.right, rc.bottom,
-        SWP_FRAMECHANGED | SWP_NOZORDER);
 }
 
 HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
@@ -139,37 +110,22 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
     p->pGraph->QueryInterface(IID_IBasicVideo,  (void**)&p->pBasicVideo);
 
     if (p->pVideoWindow) {
-        // Show the renderer so its window exists
-        p->pVideoWindow->put_Visible(OATRUE);
-
-        // Find the renderer popup window by diffing top-level windows
-        EnumCtx ctx = { p->hVideoWnd, NULL };
-        EnumWindows(EnumFindPopup, (LPARAM)&ctx);
-        p->hRenderWnd = ctx.hFound;
-
-        if (p->hRenderWnd) {
-            // Reparent via Win32 and force child style
-            ForceChildStyle(p->hRenderWnd, p->hVideoWnd);
-        } else {
-            // Fallback: use IVideoWindow (may render outside)
-            p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
-            p->pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
-            p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
-            RECT rc;
-            GetClientRect(p->hVideoWnd, &rc);
-            p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
-        }
-
+        p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
+        p->pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
         p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
+
+        RECT rc;
+        GetClientRect(p->hVideoWnd, &rc);
+        p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
+        p->pVideoWindow->put_Visible(OATRUE);
     }
 
     p->isOpen = TRUE;
     InterlockedExchange(&p->isPlaying, FALSE);
     InterlockedExchange(&p->isPaused,  FALSE);
 
-    if (p->pEvent) {
+    if (p->pEvent)
         p->hEventThread = CreateThread(NULL, 0, EventThread, player, 0, NULL);
-    }
 
     return S_OK;
 }
@@ -276,6 +232,7 @@ HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* heig
 void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     if (!player) return;
     tagMFPlayer* p = (tagMFPlayer*)player;
+    if (!p->pVideoWindow) return;
 
     RECT wrc;
     if (rc) {
@@ -311,9 +268,5 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
         }
     }
 
-    if (p->hRenderWnd) {
-        SetWindowPos(p->hRenderWnd, NULL, vx, vy, vw, vh, SWP_NOZORDER);
-    } else if (p->pVideoWindow) {
-        p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
-    }
+    p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
 }
