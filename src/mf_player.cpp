@@ -1,50 +1,63 @@
 #include "mf_player.h"
-#include <dshow.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfplay.h>
+#include <evr.h>
 #include <stdlib.h>
 
-#pragma comment(lib, "strmiids.lib")
-#pragma comment(lib, "ole32.lib")
-#pragma comment(lib, "oleaut32.lib")
+#pragma comment(lib, "mfplat.lib")
+#pragma comment(lib, "mf.lib")
+#pragma comment(lib, "mfplay.lib")
+#pragma comment(lib, "mfuuid.lib")
 
 struct tagMFPlayer {
-    IGraphBuilder*    pGraph;
-    IMediaControl*    pControl;
-    IMediaEvent*      pEvent;
-    IMediaSeeking*    pSeeking;
-    IVideoWindow*     pVideoWindow;
-    IBasicAudio*      pAudio;
-    IBasicVideo*      pBasicVideo;
-    HWND              hVideoWnd;
-    MFPlayerEndCallback onEnd;
-    void*             userData;
-    BOOL              isOpen;
-    volatile LONG     isPlaying;
-    volatile LONG     isPaused;
-    HANDLE            hEventThread;
-    volatile LONG     stopThread;
+    IMFPMediaPlayer*        pPlayer;
+    IMFVideoDisplayControl*  pVideoCtrl;
+    HWND                    hVideoWnd;
+    MFPlayerEndCallback     onEnd;
+    void*                   userData;
+    volatile LONG           isPlaying;
+    volatile LONG           isPaused;
 };
 
-static DWORD WINAPI EventThread(LPVOID lpParam) {
-    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-    tagMFPlayer* p = (tagMFPlayer*)lpParam;
-    long evCode = 0;
-    while (!InterlockedCompareExchange(&p->stopThread, 0, 0)) {
-        if (p->pEvent) {
-            HRESULT hr = p->pEvent->WaitForCompletion(100, &evCode);
-            if (SUCCEEDED(hr) && evCode == EC_COMPLETE) {
-                InterlockedExchange(&p->isPlaying, FALSE);
-                InterlockedExchange(&p->isPaused,  FALSE);
-                if (p->onEnd) p->onEnd(p->userData);
-            }
-        } else {
-            Sleep(100);
+class MFCallback : public IMFPMediaPlayerCallback {
+public:
+    MFCallback(tagMFPlayer* p) : m_p(p), m_ref(1) {}
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) {
+        if (!ppv) return E_POINTER;
+        if (riid == IID_IUnknown || riid == IID_IMFPMediaPlayerCallback) {
+            *ppv = static_cast<IMFPMediaPlayerCallback*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = NULL;
+        return E_NOINTERFACE;
+    }
+    STDMETHODIMP_(ULONG) AddRef() { return InterlockedIncrement(&m_ref); }
+    STDMETHODIMP_(ULONG) Release() { ULONG r = InterlockedDecrement(&m_ref); if (!r) delete this; return r; }
+    void STDMETHODCALLTYPE OnMediaPlayerEvent(MFP_EVENT_HEADER* pEventHeader) {
+        if (!pEventHeader) return;
+        if (pEventHeader->eEventType == MFP_EVENT_TYPE_PLAYBACK_ENDED) {
+            InterlockedExchange(&m_p->isPlaying, FALSE);
+            InterlockedExchange(&m_p->isPaused,  FALSE);
+            if (m_p->onEnd) m_p->onEnd(m_p->userData);
         }
     }
-    CoUninitialize();
-    return 0;
+private:
+    tagMFPlayer* m_p;
+    volatile LONG m_ref;
+};
+
+static HRESULT InitMF() {
+    static BOOL g_inited = FALSE;
+    if (g_inited) return S_OK;
+    HRESULT hr = MFStartup(MF_VERSION);
+    if (SUCCEEDED(hr)) g_inited = TRUE;
+    return hr;
 }
 
 MFPlayer* MFPlayer_Create(HWND hVideoWnd, MFPlayerEndCallback onEnd, void* userData) {
+    InitMF();
     tagMFPlayer* p = (tagMFPlayer*)calloc(1, sizeof(tagMFPlayer));
     if (!p) return NULL;
     p->hVideoWnd = hVideoWnd;
@@ -53,36 +66,12 @@ MFPlayer* MFPlayer_Create(HWND hVideoWnd, MFPlayerEndCallback onEnd, void* userD
     return (MFPlayer*)p;
 }
 
-static void StopEventThread(tagMFPlayer* p) {
-    if (!p->hEventThread) return;
-    InterlockedExchange(&p->stopThread, TRUE);
-    WaitForSingleObject(p->hEventThread, 2000);
-    CloseHandle(p->hEventThread);
-    p->hEventThread = NULL;
-    InterlockedExchange(&p->stopThread, FALSE);
-}
-
-static void ReleaseGraph(tagMFPlayer* p) {
-    if (p->pVideoWindow) {
-        p->pVideoWindow->put_Visible(OAFALSE);
-        p->pVideoWindow->put_Owner(0);
-        p->pVideoWindow->Release();
-        p->pVideoWindow = NULL;
-    }
-    if (p->pBasicVideo) { p->pBasicVideo->Release(); p->pBasicVideo = NULL; }
-    if (p->pAudio)      { p->pAudio->Release();      p->pAudio      = NULL; }
-    if (p->pSeeking)    { p->pSeeking->Release();    p->pSeeking    = NULL; }
-    if (p->pEvent)      { p->pEvent->Release();      p->pEvent      = NULL; }
-    if (p->pControl)    { p->pControl->Release();    p->pControl    = NULL; }
-    if (p->pGraph)      { p->pGraph->Release();      p->pGraph      = NULL; }
-}
-
 void MFPlayer_Destroy(MFPlayer* player) {
     if (!player) return;
     tagMFPlayer* p = (tagMFPlayer*)player;
     MFPlayer_Stop(player);
-    StopEventThread(p);
-    ReleaseGraph(p);
+    if (p->pVideoCtrl) { p->pVideoCtrl->Release(); p->pVideoCtrl = NULL; }
+    if (p->pPlayer)    { p->pPlayer->Release(); p->pPlayer = NULL; }
     free(p);
 }
 
@@ -91,50 +80,35 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
     tagMFPlayer* p = (tagMFPlayer*)player;
 
     MFPlayer_Stop(player);
-    StopEventThread(p);
-    ReleaseGraph(p);
+    if (p->pVideoCtrl) { p->pVideoCtrl->Release(); p->pVideoCtrl = NULL; }
+    if (p->pPlayer)    { p->pPlayer->Release(); p->pPlayer = NULL; }
 
-    HRESULT hr = CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
-        IID_IGraphBuilder, (void**)&p->pGraph);
+    InitMF();
+
+    MFCallback* cb = new MFCallback(p);
+    HRESULT hr = MFPCreateMediaPlayer(filePath, FALSE, MFP_OPTION_NONE, cb, p->hVideoWnd, &p->pPlayer);
+    cb->Release();
     if (FAILED(hr)) return hr;
 
-    p->pGraph->QueryInterface(IID_IMediaControl, (void**)&p->pControl);
-    p->pGraph->QueryInterface(IID_IMediaEvent,   (void**)&p->pEvent);
-    p->pGraph->QueryInterface(IID_IMediaSeeking, (void**)&p->pSeeking);
-    p->pGraph->QueryInterface(IID_IBasicAudio,   (void**)&p->pAudio);
-
-    hr = p->pGraph->RenderFile(filePath, NULL);
-    if (FAILED(hr)) { ReleaseGraph(p); return hr; }
-
-    p->pGraph->QueryInterface(IID_IVideoWindow, (void**)&p->pVideoWindow);
-    p->pGraph->QueryInterface(IID_IBasicVideo,  (void**)&p->pBasicVideo);
-
-    if (p->pVideoWindow) {
-        p->pVideoWindow->put_Owner((OAHWND)p->hVideoWnd);
-        p->pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
-        p->pVideoWindow->put_MessageDrain((OAHWND)p->hVideoWnd);
-
+    hr = p->pPlayer->QueryInterface(IID_IMFVideoDisplayControl, (void**)&p->pVideoCtrl);
+    if (SUCCEEDED(hr)) {
+        p->pVideoCtrl->SetVideoWindow(p->hVideoWnd);
+        p->pVideoCtrl->SetAspectRatioMode(MFVideoARMode_PreservePicture);
         RECT rc;
         GetClientRect(p->hVideoWnd, &rc);
-        p->pVideoWindow->SetWindowPosition(0, 0, rc.right, rc.bottom);
-        p->pVideoWindow->put_Visible(OATRUE);
+        p->pVideoCtrl->SetVideoPosition(NULL, &rc);
     }
 
-    p->isOpen = TRUE;
     InterlockedExchange(&p->isPlaying, FALSE);
     InterlockedExchange(&p->isPaused,  FALSE);
-
-    if (p->pEvent)
-        p->hEventThread = CreateThread(NULL, 0, EventThread, player, 0, NULL);
-
     return S_OK;
 }
 
 HRESULT MFPlayer_Play(MFPlayer* player) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pControl) return E_FAIL;
-    HRESULT hr = p->pControl->Run();
+    if (!p->pPlayer) return E_FAIL;
+    HRESULT hr = p->pPlayer->Play();
     if (SUCCEEDED(hr)) {
         InterlockedExchange(&p->isPlaying, TRUE);
         InterlockedExchange(&p->isPaused,  FALSE);
@@ -145,8 +119,8 @@ HRESULT MFPlayer_Play(MFPlayer* player) {
 HRESULT MFPlayer_Pause(MFPlayer* player) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pControl) return E_FAIL;
-    HRESULT hr = p->pControl->Pause();
+    if (!p->pPlayer) return E_FAIL;
+    HRESULT hr = p->pPlayer->Pause();
     if (SUCCEEDED(hr)) InterlockedExchange(&p->isPaused, TRUE);
     return hr;
 }
@@ -154,16 +128,11 @@ HRESULT MFPlayer_Pause(MFPlayer* player) {
 HRESULT MFPlayer_Stop(MFPlayer* player) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pControl) return S_FALSE;
-    HRESULT hr = p->pControl->Stop();
+    if (!p->pPlayer) return S_FALSE;
+    HRESULT hr = p->pPlayer->Stop();
     if (SUCCEEDED(hr)) {
         InterlockedExchange(&p->isPlaying, FALSE);
         InterlockedExchange(&p->isPaused,  FALSE);
-    }
-    if (p->pSeeking) {
-        LONGLONG pos = 0;
-        p->pSeeking->SetPositions(&pos, AM_SEEKING_AbsolutePositioning,
-            NULL, AM_SEEKING_NoPositioning);
     }
     return hr;
 }
@@ -171,18 +140,19 @@ HRESULT MFPlayer_Stop(MFPlayer* player) {
 HRESULT MFPlayer_Seek(MFPlayer* player, double seconds) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pSeeking) return E_FAIL;
-    LONGLONG pos = (LONGLONG)(seconds * 10000000.0);
-    return p->pSeeking->SetPositions(&pos, AM_SEEKING_AbsolutePositioning,
-        NULL, AM_SEEKING_NoPositioning);
+    if (!p->pPlayer) return E_FAIL;
+    PROPVARIANT pv;
+    PropVariantInit(&pv);
+    pv.vt = VT_I8;
+    pv.hVal.QuadPart = (LONGLONG)(seconds * 10000000.0);
+    return p->pPlayer->SetPosition(MFP_POSITIONTYPE_100NS, &pv);
 }
 
 HRESULT MFPlayer_SetVolume(MFPlayer* player, float volume) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pAudio) return E_FAIL;
-    long dsVol = (volume <= 0.0f) ? -10000 : (long)(-10000.0 * (1.0 - volume));
-    return p->pAudio->put_Volume(dsVol);
+    if (!p->pPlayer) return E_FAIL;
+    return p->pPlayer->SetVolume(volume);
 }
 
 BOOL MFPlayer_IsPlaying(MFPlayer* player) {
@@ -200,31 +170,39 @@ BOOL MFPlayer_IsPaused(MFPlayer* player) {
 double MFPlayer_GetDuration(MFPlayer* player) {
     if (!player) return 0;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pSeeking) return 0;
-    LONGLONG dur = 0;
-    if (FAILED(p->pSeeking->GetDuration(&dur))) return 0;
-    return dur / 10000000.0;
+    if (!p->pPlayer) return 0;
+    PROPVARIANT pv;
+    PropVariantInit(&pv);
+    HRESULT hr = p->pPlayer->GetDuration(MFP_POSITIONTYPE_100NS, &pv);
+    if (FAILED(hr)) return 0;
+    double dur = pv.hVal.QuadPart / 10000000.0;
+    PropVariantClear(&pv);
+    return dur;
 }
 
 double MFPlayer_GetPosition(MFPlayer* player) {
     if (!player) return 0;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pSeeking) return 0;
-    LONGLONG pos = 0;
-    if (FAILED(p->pSeeking->GetCurrentPosition(&pos))) return 0;
-    return pos / 10000000.0;
+    if (!p->pPlayer) return 0;
+    PROPVARIANT pv;
+    PropVariantInit(&pv);
+    HRESULT hr = p->pPlayer->GetPosition(MFP_POSITIONTYPE_100NS, &pv);
+    if (FAILED(hr)) return 0;
+    double pos = pv.hVal.QuadPart / 10000000.0;
+    PropVariantClear(&pv);
+    return pos;
 }
 
 HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* height) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pBasicVideo) return E_FAIL;
-    long vidW = 0, vidH = 0;
-    HRESULT hr = p->pBasicVideo->get_VideoWidth(&vidW);
-    if (SUCCEEDED(hr)) hr = p->pBasicVideo->get_VideoHeight(&vidH);
+    if (!p->pVideoCtrl) return E_FAIL;
+    MFVideoNormalizedRect nr;
+    RECT dstRect;
+    HRESULT hr = p->pVideoCtrl->GetVideoPosition(&nr, &dstRect);
     if (SUCCEEDED(hr)) {
-        if (width)  *width  = (DWORD)vidW;
-        if (height) *height = (DWORD)vidH;
+        if (width)  *width  = dstRect.right;
+        if (height) *height = dstRect.bottom;
     }
     return hr;
 }
@@ -232,7 +210,7 @@ HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* heig
 void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     if (!player) return;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pVideoWindow) return;
+    if (!p->pVideoCtrl) return;
 
     RECT wrc;
     if (rc) {
@@ -243,30 +221,5 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
         return;
     }
 
-    int cw = wrc.right  - wrc.left;
-    int ch = wrc.bottom - wrc.top;
-    if (cw <= 0 || ch <= 0) return;
-
-    int vx = 0, vy = 0, vw = cw, vh = ch;
-
-    if (p->pBasicVideo) {
-        long natW = 0, natH = 0;
-        if (SUCCEEDED(p->pBasicVideo->get_VideoWidth(&natW)) &&
-            SUCCEEDED(p->pBasicVideo->get_VideoHeight(&natH)) &&
-            natW > 0 && natH > 0) {
-            double srcAr = (double)natW / (double)natH;
-            double dstAr = (double)cw   / (double)ch;
-            if (srcAr > dstAr) {
-                vw = cw;
-                vh = (int)((double)cw / srcAr);
-                vy = (ch - vh) / 2;
-            } else {
-                vh = ch;
-                vw = (int)((double)ch * srcAr);
-                vx = (cw - vw) / 2;
-            }
-        }
-    }
-
-    p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
+    p->pVideoCtrl->SetVideoPosition(NULL, &wrc);
 }
