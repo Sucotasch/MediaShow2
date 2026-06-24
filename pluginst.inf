@@ -1,0 +1,8 @@
+[plugininstall]
+description=MediaShow2 - multimedia lister plugin for Total Commander
+descriptionrus=MediaShow2 - ������ ����������� ��������� ��� Total Commander
+
+type=wlx
+file=MediaShow2.wlx
+defaultdir=Wlx\MediaShow2
+defaultextension=AVI,MPEG,MPG,ASF,VOB,MP1,MP2,MP3,WAV,OGG,WMA,DAT,MKV,WEBM,MP4,M4A,FLAC,AAC,OPUS,MID,MIDI,KAR
