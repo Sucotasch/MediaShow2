@@ -1,0 +1,67 @@
+/Goal Create a modern replacement for MediaShow v0.9.5 — a Total Commander lister plugin (.wlx/.wlx64) for viewing/playing multimedia files. The original plugin (Delphi 6, 2006) has visual bugs on modern Windows. The new plugin should support modern formats, have a proper UI with seekbar, volume control, playlist, and work in both F3 lister mode and QuickView mode.
+Instructions
+- User's principle: "Не основываться на предположениях, читать реальный код, учесть все в комплексе, проверить последствия, выбрать лучшее решение"
+- Build with C++ (MSVC), CMake, Windows SDK only (no external deps)
+- Media Foundation primary, DirectShow fallback for legacy formats
+- Detect string: MULTIMEDIA & (ext="AVI" | ext="MPG" | ... | ext="KAR")
+- Package as .wlx/.wlx64 ZIP archives via python package.py
+- Track project state in PROJECT_CONTEXT.md
+- Plan file at C:\Users\sucot\.local\share\mimocode\plans\1782217461609-glowing-river.md
+Discoveries
+1. TC lister window intercepts mouse messages — trackbar controls don't receive WM_HSCROLL when MFPlay creates its own rendering window inside hVideoWnd. Original MediaShow uses DirectShow IVideoWindow with put_Owner to render into existing panel, NOT MFPCreateMediaPlayer.
+2. Trackbar rendering issue — TrackBar controls created in WM_CREATE don't render until mouse interaction. Creating them via PostMessage(WM_USER+500) after window is shown fixes rendering, but then toolbar creation via CreateControls() somehow breaks it. Current approach: create ALL controls together in CreateControls() called from WM_CREATE, no PostMessage split.
+3. Prev/Next crash fixed — MFPlayer_Open was not stopping event thread before releasing old resources. Added WaitForSingleObject on event thread before cleanup.
+4. Playlist from selected files — FindWindowEx(hTC, NULL, "SysListView32", NULL) returns NULL. TC's lister API doesn't provide selected files directly. Current implementation scans directory for media files (FindFirstFile/FindNextFile).
+5. TC API key facts:
+   - TC subclasses plugin window for 'n'/'p' hotkeys
+   - ListNotificationReceived forwards WM_COMMAND from toolbar buttons
+   - itm_next tells TC to switch to next file
+   - Tab/arrows/F3 are consumed by TC — cannot intercept
+6. Original MediaShow architecture:
+   - Lister mode (F3): child window inside TC lister panel
+   - Independent player: separate popup window
+   - Playlist embedded in center area during audio playback (not popup)
+   - DirectShow IVideoWindow with put_Owner for video rendering
+   - Uses Delphi VCL (TForm, TPanel, TTrackBar, TListView)
+7. Volume slider direction: TBS_VERT range 0-100 means up=100 (max). User wants horizontal slider.
+8. Mouse wheel: Should ONLY control volume near the volume slider, NOT seek.
+Accomplished
+Working:
+- Video/audio playback (DirectShow IVideoWindow + fallback)
+- Toolbar with Play/Stop/Prev/Next/</>> buttons and modern vector Segoe Fluent/MDL2 icons
+- Status bar with custom flat panel design displaying file info, time, volume
+- Context menu (right-click) with reordering/management options
+- Auto-advance via itm_next
+- Playlist from directory scan (shown in center area for audio files), double-click to play, delete key to remove, right-click to move up/down
+- Dark mode support
+- ASLR + DEP + High Entropy VA enabled
+- Both x86 and x64 builds compiling and passing security verification
+- Volume initialization and persistence via Total Commander INI file
+- Clean startup layout and controls rendering
+- Aspect ratio preservation (letterboxing) in video viewport
+- Fullscreen mode toggle (F11/Double click)
+In progress / broken:
+- None
+Not yet implemented:
+- Always On Top
+- Close To Tray (background playback)
+- File info from tags
+- Tag editing
+- Brightness/Contrast/Saturation (if needed)
+- Screenshot
+- Settings dialog
+Relevant files / directories
+- D:\Arx\Software Downloads\MediaShow_v0.9.5_patched\MediaShow2\ — project root
+  - src/dllmain.cpp (~870 lines) — main plugin: TC API, UI, playlist, controls
+  - src/mf_player.h/cpp — now uses DirectShow IVideoWindow (NOT MFPCreateMediaPlayer)
+  - src/ds_player.h/cpp — DirectShow fallback with event thread
+  - src/plugin_api.h — TC WLX SDK IDs and control IDs
+  - sdk/listplug.h — TC WLX SDK header
+  - CMakeLists.txt — build config (CMAKE_SHARED_LINKER_FLAGS /DYNAMICBASE /NXCOMPAT)
+  - package.py — creates .wlx/.wlx64 ZIP archives
+  - app.manifest — DPI awareness, Common Controls v6
+  - PROJECT_CONTEXT.md — full project context document (20KB)
+  - MediaShow2.wlx / MediaShow2.wlx64 — packaged plugin archives
+- D:\Arx\Software Downloads\MediaShow_v0.9.5_patched\MediaShow_unpacked.wlx — original 3.2MB binary for analysis
+- D:\Arx\Software Downloads\MediaShow_v0.9.5_patched\analyze_*.py — analysis scripts for original binary
+- C:\Users\sucot\.local\share\mimocode\plans\1782217461609-glowing-river.md — plan file

@@ -1,0 +1,1202 @@
+#include <windows.h>
+#include <windowsx.h>
+#include <shellapi.h>
+#include <commctrl.h>
+#include <uxtheme.h>
+#include <tchar.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "plugin_api.h"
+#include "mf_player.h"
+#include "ds_player.h"
+
+#pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "uxtheme.lib")
+
+#ifndef min
+#define min(a,b) ((a)<(b)?(a):(b))
+#endif
+#ifndef max
+#define max(a,b) ((a)>(b)?(a):(b))
+#endif
+
+static TCHAR iniPath[MAX_PATH] = {0};
+static ATOM  mainWndClass      = 0;
+static ATOM  fullscreenWndClass = 0;
+
+/* -----------------------------------------------------------------------
+   Plugin State
+   ----------------------------------------------------------------------- */
+struct PluginState {
+    HWND hMainWnd;
+    HWND hParentWnd;        // TC lister window (for itm_next)
+    HWND hVideoWnd;
+    HWND hPlaylist;
+    HWND hToolbar;
+    HWND hStatus;
+    HWND hSeekbar;
+    HWND hVolSlider;
+    HWND hFullscreenWnd;    // borderless popup when in fullscreen
+    MFPlayer* pMFPlayer;
+    DSPlayer* pDSPlayer;
+    BOOL  useDirectShow;
+    TCHAR filePath[MAX_PATH];
+    BOOL  isPlaying;
+    BOOL  isPaused;
+    BOOL  isMuted;
+    BOOL  showPlaylist;
+    BOOL  isFullscreen;
+    BOOL  isAlwaysOnTop;
+    BOOL  isDarkMode;
+    double duration;
+    double position;
+    int   volume;
+    TCHAR** playlist;
+    int   playlistCount;
+    int   playlistIndex;
+    HFONT hFont;
+    HFONT hIconFont;        // Segoe Fluent Icons / MDL2 Assets for toolbar
+    HBRUSH hBackBrush;
+};
+
+static PluginState* GetState(HWND hWnd) {
+    return (PluginState*)GetProp(hWnd, TEXT("STATE"));
+}
+
+/* -----------------------------------------------------------------------
+   Playlist helpers
+   ----------------------------------------------------------------------- */
+static void FreePlaylist(PluginState* state) {
+    if (!state || !state->playlist) return;
+    for (int i = 0; i < state->playlistCount; i++)
+        free(state->playlist[i]);
+    free(state->playlist);
+    state->playlist      = NULL;
+    state->playlistCount = 0;
+    state->playlistIndex = 0;
+}
+
+/* -----------------------------------------------------------------------
+   Volume helpers (Defect #2 fix)
+   ----------------------------------------------------------------------- */
+static void ApplyVolume(PluginState* state) {
+    if (!state) return;
+    int vol = state->isMuted ? 0 : state->volume;
+    if (state->useDirectShow)
+        DSPlayer_SetVolume(state->pDSPlayer, vol);
+    else
+        MFPlayer_SetVolume(state->pMFPlayer, vol / 100.0f);
+}
+
+static void SaveVolume(PluginState* state) {
+    if (!state || iniPath[0] == 0) return;
+    TCHAR buf[16];
+    _sntprintf(buf, 16, TEXT("%d"), state->volume);
+    WritePrivateProfileString(TEXT("MediaShow2"), TEXT("Volume"), buf, iniPath);
+}
+
+static int LoadVolume(void) {
+    if (iniPath[0] == 0) return 80;
+    return (int)GetPrivateProfileInt(TEXT("MediaShow2"), TEXT("Volume"), 80, iniPath);
+}
+
+/* -----------------------------------------------------------------------
+   Track-end callback (Defect #4 fix):
+   Called from EventThread — must NOT touch state directly.
+   Simply posts WM_PLAYER_TRACK_END to the UI thread.
+   ----------------------------------------------------------------------- */
+static void OnMFEnd(void* userData) {
+    PluginState* state = (PluginState*)userData;
+    if (!state || !state->hMainWnd) return;
+    PostMessage(state->hMainWnd, WM_PLAYER_TRACK_END, 0, 0);
+}
+
+/* -----------------------------------------------------------------------
+   Media file detection
+   ----------------------------------------------------------------------- */
+static BOOL IsMediaFile(const TCHAR* ext) {
+    static const TCHAR* mediaExts[] = {
+        TEXT("avi"), TEXT("mpg"), TEXT("mpeg"), TEXT("asf"), TEXT("vob"),
+        TEXT("mp1"), TEXT("mp2"), TEXT("mp3"), TEXT("wav"), TEXT("ogg"),
+        TEXT("wma"), TEXT("dat"), TEXT("mkv"), TEXT("webm"), TEXT("mp4"),
+        TEXT("m4a"), TEXT("flac"), TEXT("aac"), TEXT("opus"), TEXT("mid"),
+        TEXT("midi"), TEXT("kar"), NULL
+    };
+    for (int i = 0; mediaExts[i]; i++)
+        if (_tcsicmp(ext, mediaExts[i]) == 0) return TRUE;
+    return FALSE;
+}
+
+static BOOL IsAudioOnly(const TCHAR* filePath) {
+    const TCHAR* dot = _tcsrchr(filePath, TEXT('.'));
+    if (!dot) return FALSE;
+    dot++;
+    static const TCHAR* audioExts[] = {
+        TEXT("mp3"), TEXT("wav"), TEXT("ogg"), TEXT("wma"), TEXT("flac"),
+        TEXT("aac"), TEXT("opus"), TEXT("mid"), TEXT("midi"), TEXT("kar"),
+        TEXT("mp1"), TEXT("mp2"), NULL
+    };
+    for (int i = 0; audioExts[i]; i++)
+        if (_tcsicmp(dot, audioExts[i]) == 0) return TRUE;
+    return FALSE;
+}
+
+/* -----------------------------------------------------------------------
+   Directory scan (Defect #12 + #13 fix)
+   ----------------------------------------------------------------------- */
+static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, int* outCount) {
+    TCHAR searchPath[MAX_PATH];
+    _sntprintf(searchPath, MAX_PATH, TEXT("%s\\*.*"), dir);
+
+    int allocSize = 64;
+    int count     = 0;
+    TCHAR** files = (TCHAR**)calloc(allocSize, sizeof(TCHAR*));
+    if (!files) { *outFiles = NULL; *outCount = 0; return; }
+
+    WIN32_FIND_DATA fd;
+    HANDLE hFind = FindFirstFile(searchPath, &fd);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        free(files);
+        *outFiles = NULL; *outCount = 0;
+        return;
+    }
+
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        TCHAR* dot = _tcsrchr(fd.cFileName, TEXT('.'));
+        if (!dot || !IsMediaFile(dot + 1)) continue;
+
+        if (count >= allocSize) {
+            allocSize *= 2;
+            TCHAR** tmp = (TCHAR**)realloc(files, allocSize * sizeof(TCHAR*));
+            if (!tmp) break;   // Defect #13: keep current list on alloc failure
+            files = tmp;
+        }
+
+        TCHAR fullPath[MAX_PATH];
+        _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fd.cFileName);
+        files[count++] = _tcsdup(fullPath);
+
+    } while (FindNextFile(hFind, &fd));
+    FindClose(hFind);
+
+    // Defect #12: free the empty array if no matches
+    if (count == 0) {
+        free(files);
+        *outFiles = NULL; *outCount = 0;
+        return;
+    }
+    *outFiles = files;
+    *outCount = count;
+}
+
+static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* currentFile) {
+    FreePlaylist(state);
+
+    TCHAR dir[MAX_PATH];
+    _tcsncpy(dir, currentFile, MAX_PATH - 1);
+    TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
+    if (lastSlash) *lastSlash = 0;
+
+    TCHAR** files = NULL;
+    int     count = 0;
+    ScanDirectoryForMedia(dir, &files, &count);
+
+    if (!files || count == 0) {
+        // Fallback: single-entry playlist with the current file
+        state->playlist      = (TCHAR**)calloc(1, sizeof(TCHAR*));
+        state->playlist[0]   = _tcsdup(currentFile);
+        state->playlistCount = 1;
+        state->playlistIndex = 0;
+        return;
+    }
+
+    state->playlist      = files;
+    state->playlistCount = count;
+    state->playlistIndex = 0;
+
+    for (int i = 0; i < count; i++) {
+        if (_tcsicmp(state->playlist[i], currentFile) == 0) {
+            state->playlistIndex = i;
+            break;
+        }
+    }
+}
+
+/* -----------------------------------------------------------------------
+   UI update helpers
+   ----------------------------------------------------------------------- */
+static void UpdatePlaylist(PluginState* state) {
+    if (!state || !state->hPlaylist) return;
+    ListView_DeleteAllItems(state->hPlaylist);
+
+    if (!state->playlist || state->playlistCount == 0) {
+        LVITEM lvi = {0};
+        lvi.mask    = LVIF_TEXT;
+        lvi.iItem   = 0;
+        TCHAR empty[] = TEXT("(empty)");
+        lvi.pszText = empty;
+        ListView_InsertItem(state->hPlaylist, &lvi);
+        return;
+    }
+
+    for (int i = 0; i < state->playlistCount; i++) {
+        TCHAR* fname = _tcsrchr(state->playlist[i], TEXT('\\'));
+        fname = fname ? fname + 1 : state->playlist[i];
+
+        TCHAR display[MAX_PATH + 4];
+        _sntprintf(display, MAX_PATH + 4,
+            (i == state->playlistIndex) ? TEXT("\u25BA %s") : TEXT("  %s"), fname);
+
+        LVITEM lvi = {0};
+        lvi.mask    = LVIF_TEXT;
+        lvi.iItem   = i;
+        lvi.pszText = display;
+        ListView_InsertItem(state->hPlaylist, &lvi);
+    }
+
+    if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount)
+        ListView_SetItemState(state->hPlaylist, state->playlistIndex,
+            LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+}
+
+static void UpdateLayout(PluginState* state) {
+    if (!state || !state->hMainWnd) return;
+    RECT rc;
+    GetClientRect(state->hMainWnd, &rc);
+    int w = rc.right;
+    int h = rc.bottom;
+    if (w < 100 || h < 60) return;
+
+    const int tbH     = 40;    // toolbar row height
+    const int ctrlH   = 28;    // trackbar height
+    const int statusH = 22;    // status bar height
+    const int tbW     = 220;   // fixed toolbar width
+
+    if (state->hToolbar) {
+        MoveWindow(state->hToolbar, 0, 0, tbW, tbH, TRUE);
+        SendMessage(state->hToolbar, TB_AUTOSIZE, 0, 0);
+    }
+
+    // Seekbar: fills space between toolbar and volume slider
+    int seekX = tbW + 4;
+    int volW  = 140;
+    int volX  = w - volW - 4;
+    int seekW = volX - seekX - 4;
+    if (seekW < 40) seekW = 40;
+
+    int trackY = (tbH - ctrlH) / 2;
+    if (state->hSeekbar)
+        SetWindowPos(state->hSeekbar, HWND_TOP, seekX, trackY, seekW, ctrlH, SWP_NOZORDER);
+    if (state->hVolSlider)
+        SetWindowPos(state->hVolSlider, HWND_TOP, volX, trackY, volW, ctrlH, SWP_NOZORDER);
+
+    if (state->hStatus)
+        MoveWindow(state->hStatus, 0, h - statusH, w, statusH, TRUE);
+
+    int contentH = h - tbH - statusH;
+    if (contentH < 0) contentH = 0;
+
+    BOOL showVid = !state->showPlaylist;
+    if (state->hVideoWnd)
+        ShowWindow(state->hVideoWnd,  showVid         ? SW_SHOW : SW_HIDE);
+    if (state->hPlaylist)
+        ShowWindow(state->hPlaylist,  state->showPlaylist ? SW_SHOW : SW_HIDE);
+
+    if (showVid && state->hVideoWnd)
+        MoveWindow(state->hVideoWnd, 0, tbH, w, contentH, TRUE);
+    if (state->showPlaylist && state->hPlaylist)
+        MoveWindow(state->hPlaylist, 0, tbH, w, contentH, TRUE);
+
+    if (showVid) {
+        RECT vr = { 0, 0, w, contentH };
+        if (state->useDirectShow)
+            DSPlayer_UpdateVideoWindow(state->pDSPlayer, &vr);
+        else
+            MFPlayer_UpdateVideoWindow(state->pMFPlayer, &vr);
+    }
+}
+
+static void UpdateStatus(PluginState* state) {
+    if (!state || !state->hStatus) return;
+    TCHAR buf[512];
+    TCHAR* fname = _tcsrchr(state->filePath, TEXT('\\'));
+    fname = fname ? fname + 1 : state->filePath;
+
+    int pm = (int)(state->position / 60), ps = (int)state->position % 60;
+    int dm = (int)(state->duration / 60), ds = (int)state->duration % 60;
+
+    TCHAR plInfo[32] = {0};
+    if (state->playlist && state->playlistCount > 1)
+        _sntprintf(plInfo, 32, TEXT("  [%d/%d]"), state->playlistIndex + 1, state->playlistCount);
+
+    _sntprintf(buf, 512, TEXT("  %s%s  |  %02d:%02d / %02d:%02d  |  Vol: %d%%%s  |  %s"),
+        fname, plInfo, pm, ps, dm, ds,
+        state->volume, state->isMuted ? TEXT(" (M)") : TEXT(""),
+        state->isPlaying ? (state->isPaused ? TEXT("Paused") : TEXT("Playing")) : TEXT("Stopped"));
+    SetWindowText(state->hStatus, buf);
+}
+
+static void UpdateSeekbar(PluginState* state) {
+    if (!state || !state->hSeekbar) return;
+    int pos = (state->duration > 0) ? (int)(state->position / state->duration * 100) : 0;
+    SendMessage(state->hSeekbar, TBM_SETPOS, TRUE, pos);
+}
+
+static void UpdateVolumeSlider(PluginState* state) {
+    if (!state || !state->hVolSlider) return;
+    SendMessage(state->hVolSlider, TBM_SETPOS, TRUE, state->volume);
+}
+
+/* -----------------------------------------------------------------------
+   Theme (Defect #8 fix)
+   ----------------------------------------------------------------------- */
+static void ApplyTheme(PluginState* state) {
+    if (!state) return;
+    COLORREF bg  = state->isDarkMode ? RGB(28,  28,  28)  : GetSysColor(COLOR_BTNFACE);
+    COLORREF fg  = state->isDarkMode ? RGB(220, 220, 220) : GetSysColor(COLOR_BTNTEXT);
+
+    if (state->hBackBrush) DeleteObject(state->hBackBrush);
+    state->hBackBrush = CreateSolidBrush(bg);
+
+    if (state->hPlaylist) {
+        ListView_SetBkColor(state->hPlaylist, bg);
+        ListView_SetTextBkColor(state->hPlaylist, bg);
+        ListView_SetTextColor(state->hPlaylist, fg);
+        // Try dark theme on the listview scrollbar/header
+        SetWindowTheme(state->hPlaylist,
+            state->isDarkMode ? L"DarkMode_Explorer" : L"Explorer", NULL);
+        InvalidateRect(state->hPlaylist, NULL, TRUE);
+    }
+    InvalidateRect(state->hMainWnd, NULL, TRUE);
+}
+
+/* -----------------------------------------------------------------------
+   Context menu
+   ----------------------------------------------------------------------- */
+static void ShowContextMenu(PluginState* state, int x, int y) {
+    if (!state) return;
+    HMENU hMenu = CreatePopupMenu();
+    AppendMenu(hMenu, MF_STRING, IDM_PLAY,
+        (state->isPlaying && !state->isPaused) ? TEXT("Pause") : TEXT("Play"));
+    AppendMenu(hMenu, MF_STRING, IDM_STOP, TEXT("Stop"));
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, MF_STRING, IDM_PREV, TEXT("Previous file"));
+    AppendMenu(hMenu, MF_STRING, IDM_NEXT, TEXT("Next file"));
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, MF_STRING, IDM_VOL_UP,   TEXT("Volume Up\t\u2191"));
+    AppendMenu(hMenu, MF_STRING, IDM_VOL_DOWN, TEXT("Volume Down\t\u2193"));
+    AppendMenu(hMenu, state->isMuted ? MF_CHECKED : MF_STRING, IDM_MUTE, TEXT("Mute\tM"));
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, MF_STRING, IDM_SEEK_FWD,  TEXT("Forward 10s\t\u2192"));
+    AppendMenu(hMenu, MF_STRING, IDM_SEEK_BACK, TEXT("Back 10s\t\u2190"));
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, MF_STRING, IDM_FULLSCREEN,
+        state->isFullscreen ? TEXT("Exit Fullscreen\tF11") : TEXT("Fullscreen\tF11"));
+    AppendMenu(hMenu, state->isAlwaysOnTop ? MF_CHECKED : MF_STRING,
+        IDM_ALWAYSONTOP, TEXT("Always on Top\tCtrl+T"));
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
+        IDM_SHOWPLAYLIST, TEXT("Show Playlist\tL"));
+    AppendMenu(hMenu, MF_STRING, IDM_FILEINFO, TEXT("File Info\tI"));
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, MF_STRING, IDM_ABOUT, TEXT("About MediaShow2"));
+    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_NONOTIFY, x, y, 0, state->hMainWnd, NULL);
+    DestroyMenu(hMenu);
+}
+
+/* -----------------------------------------------------------------------
+   Controls creation (Defect #1 fix: CCS_NORESIZE|CCS_NOPARENTALIGN,
+                       Defect #18: Fluent icon font on toolbar)
+   ----------------------------------------------------------------------- */
+static void CreateControls(PluginState* state) {
+    INITCOMMONCONTROLSEX icex;
+    icex.dwSize = sizeof(icex);
+    icex.dwICC  = ICC_BAR_CLASSES | ICC_WIN95_CLASSES | ICC_STANDARD_CLASSES;
+    InitCommonControlsEx(&icex);
+
+    // Defect #18: create icon font from Segoe Fluent Icons (Win11) or MDL2 Assets (Win10)
+    state->hIconFont = CreateFont(
+        -18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
+        TEXT("Segoe Fluent Icons"));
+    if (!state->hIconFont)
+        state->hIconFont = CreateFont(
+            -18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
+            TEXT("Segoe MDL2 Assets"));
+
+    // Defect #1 fix: CCS_NORESIZE | CCS_NOPARENTALIGN prevent toolbar from
+    // auto-stretching to parent width and covering the trackbars.
+    state->hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, TEXT(""),
+        WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | TBSTYLE_LIST |
+        CCS_NORESIZE | CCS_NOPARENTALIGN,
+        0, 0, 220, 40, state->hMainWnd,
+        (HMENU)IDC_TOOLBAR, GetModuleHandle(0), NULL);
+
+    if (state->hToolbar) {
+        SendMessage(state->hToolbar, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
+        SendMessage(state->hToolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(36, 36));
+        SendMessage(state->hToolbar, TB_SETBITMAPSIZE, 0, MAKELPARAM(0, 0));
+        if (state->hIconFont)
+            SendMessage(state->hToolbar, WM_SETFONT, (WPARAM)state->hIconFont, FALSE);
+
+        // Segoe MDL2 Assets glyph codepoints
+        TBBUTTON buttons[] = {
+            { I_IMAGENONE, IDM_PREV,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uE892" }, // Prev
+            { I_IMAGENONE, IDM_PLAY,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uE768" }, // Play
+            { I_IMAGENONE, IDM_STOP,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uE71A" }, // Stop
+            { I_IMAGENONE, IDM_NEXT,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uE893" }, // Next
+            { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                    {0}, 0, 0 },
+            { I_IMAGENONE, IDM_SEEK_BACK, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uEB9E" }, // Rewind 10s
+            { I_IMAGENONE, IDM_SEEK_FWD,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uEB9F" }, // Forward 10s
+        };
+        SendMessage(state->hToolbar, TB_ADDBUTTONS, 7, (LPARAM)buttons);
+        SendMessage(state->hToolbar, TB_AUTOSIZE, 0, 0);
+    }
+
+    state->hSeekbar = CreateWindow(TRACKBAR_CLASS, TEXT(""),
+        WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_NOTICKS,
+        0, 0, 100, 28,
+        state->hMainWnd, (HMENU)IDC_SEEKBAR, GetModuleHandle(0), NULL);
+    if (state->hSeekbar) {
+        SendMessage(state->hSeekbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
+        SendMessage(state->hSeekbar, TBM_SETPOS,   TRUE, 0);
+    }
+
+    state->hVolSlider = CreateWindow(TRACKBAR_CLASS, TEXT(""),
+        WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_NOTICKS,
+        0, 0, 100, 28,
+        state->hMainWnd, (HMENU)IDC_VOLSLIDER, GetModuleHandle(0), NULL);
+    if (state->hVolSlider) {
+        SendMessage(state->hVolSlider, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
+        SendMessage(state->hVolSlider, TBM_SETPOS,   TRUE, state->volume);
+    }
+
+    state->hStatus = CreateWindowEx(0, STATUSCLASSNAME, TEXT(""),
+        WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
+        0, 0, 100, 22,
+        state->hMainWnd, (HMENU)IDC_SToolBar, GetModuleHandle(0), NULL);
+}
+
+/* -----------------------------------------------------------------------
+   Fullscreen (Defect #15 fix)
+   ----------------------------------------------------------------------- */
+static LRESULT CALLBACK FullscreenWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    PluginState* state = (PluginState*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+    switch (msg) {
+    case WM_ERASEBKGND: {
+        HDC hdc = (HDC)wParam;
+        RECT rc; GetClientRect(hWnd, &rc);
+        FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+        return 1;
+    }
+    case WM_KEYDOWN:
+        if ((wParam == VK_ESCAPE || wParam == VK_F11) && state)
+            SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+        return 0;
+    case WM_LBUTTONDBLCLK:
+        if (state)
+            SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+        return 0;
+    }
+    return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+static void RegisterFullscreenClass() {
+    if (fullscreenWndClass) return;
+    WNDCLASSEX wc = {0};
+    wc.cbSize        = sizeof(WNDCLASSEX);
+    wc.style         = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+    wc.lpfnWndProc   = FullscreenWndProc;
+    wc.hInstance     = GetModuleHandle(0);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+    wc.lpszClassName = TEXT("MediaShow2Fullscreen");
+    fullscreenWndClass = RegisterClassEx(&wc);
+}
+
+static void ToggleFullscreen(PluginState* state) {
+    if (!state) return;
+    if (!state->isFullscreen) {
+        RegisterFullscreenClass();
+        HMONITOR hMon = MonitorFromWindow(state->hMainWnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(mi) };
+        GetMonitorInfo(hMon, &mi);
+        RECT r = mi.rcMonitor;
+
+        state->hFullscreenWnd = CreateWindowEx(WS_EX_TOPMOST,
+            TEXT("MediaShow2Fullscreen"), TEXT(""),
+            WS_POPUP | WS_VISIBLE,
+            r.left, r.top, r.right - r.left, r.bottom - r.top,
+            NULL, NULL, GetModuleHandle(0), NULL);
+        if (!state->hFullscreenWnd) return;
+
+        SetWindowLongPtr(state->hFullscreenWnd, GWLP_USERDATA, (LONG_PTR)state);
+        ShowWindow(state->hVideoWnd, SW_SHOW);
+        SetParent(state->hVideoWnd, state->hFullscreenWnd);
+        int fw = r.right - r.left, fh = r.bottom - r.top;
+        MoveWindow(state->hVideoWnd, 0, 0, fw, fh, TRUE);
+
+        RECT vr = { 0, 0, fw, fh };
+        if (state->useDirectShow)
+            DSPlayer_UpdateVideoWindow(state->pDSPlayer, &vr);
+        else
+            MFPlayer_UpdateVideoWindow(state->pMFPlayer, &vr);
+
+        ShowCursor(FALSE);
+        state->isFullscreen = TRUE;
+    } else {
+        SetParent(state->hVideoWnd, state->hMainWnd);
+        DestroyWindow(state->hFullscreenWnd);
+        state->hFullscreenWnd = NULL;
+        ShowCursor(TRUE);
+        state->isFullscreen = FALSE;
+        UpdateLayout(state);
+    }
+}
+
+/* -----------------------------------------------------------------------
+   Navigate to a playlist item (shared by IDM_PREV, IDM_NEXT, double-click,
+   and the WM_PLAYER_TRACK_END handler)
+   ----------------------------------------------------------------------- */
+static void PlayIndex(PluginState* state, int idx) {
+    if (!state || idx < 0 || idx >= state->playlistCount) return;
+    state->playlistIndex = idx;
+    TCHAR* f = state->playlist[idx];
+
+    if (state->useDirectShow) {
+        DSPlayer_Stop(state->pDSPlayer);
+        DSPlayer_Open(state->pDSPlayer, f);
+        DSPlayer_Play(state->pDSPlayer);
+    } else {
+        MFPlayer_Stop(state->pMFPlayer);
+        MFPlayer_Open(state->pMFPlayer, f);
+        MFPlayer_Play(state->pMFPlayer);
+    }
+    // Defect #2 fix: always apply user volume after opening a new file
+    ApplyVolume(state);
+
+    _tcsncpy(state->filePath, f, MAX_PATH - 1);
+    state->duration  = state->useDirectShow ?
+        DSPlayer_GetDuration(state->pDSPlayer) :
+        MFPlayer_GetDuration(state->pMFPlayer);
+    state->isPlaying = TRUE;
+    state->isPaused  = FALSE;
+
+    state->showPlaylist = IsAudioOnly(f);
+    UpdatePlaylist(state);
+    UpdateLayout(state);
+    UpdateStatus(state);
+    UpdateSeekbar(state);
+}
+
+/* -----------------------------------------------------------------------
+   Video window subclass (Defect #14 fix: double-click triggers fullscreen,
+                          Defect #3 fix:  WM_MOUSEWHEEL removed)
+   ----------------------------------------------------------------------- */
+static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                     UINT_PTR subclassId, DWORD_PTR refData) {
+    PluginState* state = (PluginState*)refData;
+    switch (msg) {
+    // Defect #10: paint letterbox background black
+    case WM_ERASEBKGND: {
+        HDC hdc = (HDC)wParam;
+        RECT rc; GetClientRect(hWnd, &rc);
+        FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+        return 1;
+    }
+    // Defect #14 fix: double-click triggers fullscreen toggle
+    case WM_LBUTTONDBLCLK:
+        if (state)
+            SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+        return 0;
+
+    case WM_RBUTTONUP:
+    case WM_CONTEXTMENU:
+        if (state) {
+            int x, y;
+            if (msg == WM_CONTEXTMENU) {
+                x = GET_X_LPARAM(lParam); y = GET_Y_LPARAM(lParam);
+            } else {
+                POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                ClientToScreen(hWnd, &pt);
+                x = pt.x; y = pt.y;
+            }
+            ShowContextMenu(state, x, y);
+        }
+        return 0;
+    // Defect #3 fix: WM_MOUSEWHEEL removed from video window.
+    // Volume-only wheel is handled in cbNewMain.
+    }
+    return DefSubclassProc(hWnd, msg, wParam, lParam);
+}
+
+/* -----------------------------------------------------------------------
+   Main window procedure
+   ----------------------------------------------------------------------- */
+static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    PluginState* state = GetState(hWnd);
+
+    switch (msg) {
+
+    /* ---- Initialization ---- */
+    case WM_CREATE: {
+        state = (PluginState*)calloc(1, sizeof(PluginState));
+        if (!state) return -1;
+        state->hMainWnd = hWnd;
+        // Defect #2 fix: load persisted volume; don't hardcode 80 here
+        state->volume   = LoadVolume();
+        state->hFont = CreateFont(
+            -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, TEXT("Segoe UI"));
+        state->hBackBrush = CreateSolidBrush(GetSysColor(COLOR_BTNFACE));
+        SetProp(hWnd, TEXT("STATE"), (HANDLE)state);
+
+        state->hVideoWnd = CreateWindowEx(0, WC_STATIC, TEXT(""),
+            WS_CHILD | WS_VISIBLE | SS_BLACKRECT,
+            0, 0, 100, 100,
+            hWnd, (HMENU)IDC_VIDEO, GetModuleHandle(0), NULL);
+        SetWindowSubclass(state->hVideoWnd, VideoWndProc, 0, (DWORD_PTR)state);
+
+        state->hPlaylist = CreateWindow(WC_LISTVIEW, TEXT(""),
+            WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
+            0, 0, 100, 100,
+            hWnd, (HMENU)IDC_PLAYLIST, GetModuleHandle(0), NULL);
+        ListView_SetExtendedListViewStyle(state->hPlaylist,
+            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+
+        LVCOLUMN lvc = {0};
+        lvc.mask    = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+        lvc.cx      = 400;
+        lvc.pszText = (TCHAR*)TEXT("Playlist");
+        ListView_InsertColumn(state->hPlaylist, 0, &lvc);
+        ShowWindow(state->hPlaylist, SW_HIDE);
+
+        state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+        state->pDSPlayer = DSPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+
+        CreateControls(state);
+        return 0;
+    }
+
+    /* ---- Layout ---- */
+    case WM_SIZE:
+        if (state) UpdateLayout(state);
+        return 0;
+
+    /* ---- Background (dark mode) ---- */
+    case WM_ERASEBKGND: {
+        if (!state) break;
+        HDC hdc = (HDC)wParam;
+        RECT rc; GetClientRect(hWnd, &rc);
+        FillRect(hdc, &rc, state->hBackBrush);
+        return 1;
+    }
+
+    /* ---- Seekbar / Volume slider (WM_HSCROLL / WM_VSCROLL) ---- */
+    case WM_HSCROLL: {
+        if (!state) break;
+        HWND hCtrl = (HWND)lParam;
+        if (hCtrl == state->hSeekbar) {
+            int pos = (int)SendMessage(state->hSeekbar, TBM_GETPOS, 0, 0);
+            if (state->duration > 0) {
+                state->position = state->duration * pos / 100.0;
+                if (state->useDirectShow)
+                    DSPlayer_Seek(state->pDSPlayer, state->position);
+                else
+                    MFPlayer_Seek(state->pMFPlayer, state->position);
+            }
+            UpdateStatus(state);
+        } else if (hCtrl == state->hVolSlider) {
+            state->volume = (int)SendMessage(state->hVolSlider, TBM_GETPOS, 0, 0);
+            ApplyVolume(state);
+            SaveVolume(state);          // Defect #2 fix: persist immediately
+            UpdateStatus(state);
+        }
+        return 0;
+    }
+
+    case WM_VSCROLL: {
+        if (!state) break;
+        HWND hCtrl = (HWND)lParam;
+        if (hCtrl == state->hVolSlider) {
+            state->volume = (int)SendMessage(state->hVolSlider, TBM_GETPOS, 0, 0);
+            ApplyVolume(state);
+            SaveVolume(state);
+            UpdateStatus(state);
+        }
+        return 0;
+    }
+
+    /* ---- Mouse wheel: volume only (Defect #3 fix) ---- */
+    case WM_MOUSEWHEEL: {
+        if (!state) break;
+        // Scroll UP (delta > 0) → volume up; DOWN → volume down
+        int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+        state->volume = max(0, min(100, state->volume + (delta > 0 ? 5 : -5)));
+        ApplyVolume(state);
+        SaveVolume(state);
+        UpdateVolumeSlider(state);
+        UpdateStatus(state);
+        return 0;
+    }
+
+    /* ---- Context menu ---- */
+    case WM_CONTEXTMENU:
+        if (state) ShowContextMenu(state, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        return 0;
+
+    /* ---- Focus (Defect #21 fix) ---- */
+    case WM_SETFOCUS:
+        if (state) {
+            if (state->showPlaylist && state->hPlaylist)
+                SetFocus(state->hPlaylist);
+            else if (state->hVideoWnd)
+                SetFocus(state->hVideoWnd);
+        }
+        return 0;
+
+    /* ---- Playlist notifications (Defect #11 fix) ---- */
+    case WM_NOTIFY: {
+        if (!state) break;
+        NMHDR* hdr = (NMHDR*)lParam;
+        if (hdr->hwndFrom != state->hPlaylist) break;
+
+        if (hdr->code == NM_DBLCLK) {
+            NMITEMACTIVATE* nm = (NMITEMACTIVATE*)lParam;
+            if (nm->iItem >= 0 && nm->iItem < state->playlistCount)
+                PlayIndex(state, nm->iItem);
+            return 0;
+        }
+
+        if (hdr->code == LVN_KEYDOWN) {
+            NMLVKEYDOWN* kd = (NMLVKEYDOWN*)lParam;
+            if (kd->wVKey == VK_DELETE) {
+                int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
+                if (idx >= 0 && idx < state->playlistCount) {
+                    free(state->playlist[idx]);
+                    memmove(&state->playlist[idx], &state->playlist[idx + 1],
+                        (state->playlistCount - idx - 1) * sizeof(TCHAR*));
+                    state->playlistCount--;
+                    if (state->playlistIndex >= state->playlistCount)
+                        state->playlistIndex = max(0, state->playlistCount - 1);
+                    UpdatePlaylist(state);
+                }
+            } else if (kd->wVKey == VK_RETURN) {
+                int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
+                if (idx >= 0) PlayIndex(state, idx);
+            }
+            return 0;
+        }
+        break;
+    }
+
+    /* ---- Keyboard shortcuts (Defect #16 fix) ---- */
+    case WM_KEYDOWN: {
+        if (!state) break;
+        switch (wParam) {
+        case VK_SPACE: SendMessage(hWnd, WM_COMMAND, IDM_PLAY,          0); return 0;
+        case 'S':      SendMessage(hWnd, WM_COMMAND, IDM_STOP,          0); return 0;
+        case VK_LEFT:  SendMessage(hWnd, WM_COMMAND, IDM_SEEK_BACK,     0); return 0;
+        case VK_RIGHT: SendMessage(hWnd, WM_COMMAND, IDM_SEEK_FWD,      0); return 0;
+        case VK_UP:    SendMessage(hWnd, WM_COMMAND, IDM_VOL_UP,        0); return 0;
+        case VK_DOWN:  SendMessage(hWnd, WM_COMMAND, IDM_VOL_DOWN,      0); return 0;
+        case 'M':      SendMessage(hWnd, WM_COMMAND, IDM_MUTE,          0); return 0;
+        case VK_F11:   SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN,    0); return 0;
+        case 'L':      SendMessage(hWnd, WM_COMMAND, IDM_SHOWPLAYLIST,  0); return 0;
+        case 'I':      SendMessage(hWnd, WM_COMMAND, IDM_FILEINFO,      0); return 0;
+        case VK_ESCAPE:
+            if (state->isFullscreen)
+                SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+            return 0;
+        case 'T':
+            if (GetKeyState(VK_CONTROL) & 0x8000)
+                SendMessage(hWnd, WM_COMMAND, IDM_ALWAYSONTOP, 0);
+            return 0;
+        }
+        break;
+    }
+
+    /* ---- Track-end notification from EventThread (Defect #4 fix) ---- */
+    case WM_PLAYER_TRACK_END: {
+        if (!state) break;
+        state->isPlaying = FALSE;
+        state->isPaused  = FALSE;
+        if (state->playlist && state->playlistIndex < state->playlistCount - 1) {
+            PlayIndex(state, state->playlistIndex + 1);
+        } else {
+            // Defect #7 fix: itm_next in LOWORD, sent to TC parent window
+            PostMessage(state->hParentWnd, WM_COMMAND,
+                MAKELONG(itm_next, 0), (LPARAM)hWnd);
+        }
+        return 0;
+    }
+
+    /* ---- Commands ---- */
+    case WM_COMMAND: {
+        if (!state) break;
+        WORD cmd = LOWORD(wParam);
+        switch (cmd) {
+
+        case IDM_PLAY:
+            if (state->isPlaying && !state->isPaused) {
+                if (state->useDirectShow) DSPlayer_Pause(state->pDSPlayer);
+                else                      MFPlayer_Pause(state->pMFPlayer);
+                state->isPaused = TRUE;
+            } else {
+                if (state->useDirectShow) DSPlayer_Play(state->pDSPlayer);
+                else                      MFPlayer_Play(state->pMFPlayer);
+                state->isPlaying = TRUE;
+                state->isPaused  = FALSE;
+            }
+            UpdateStatus(state);
+            break;
+
+        case IDM_STOP:
+            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+            else                      MFPlayer_Stop(state->pMFPlayer);
+            state->isPlaying = FALSE;
+            state->isPaused  = FALSE;
+            state->position  = 0;
+            UpdateStatus(state);
+            UpdateSeekbar(state);
+            break;
+
+        case IDM_PREV:
+            if (state->playlist && state->playlistIndex > 0)
+                PlayIndex(state, state->playlistIndex - 1);
+            break;
+
+        case IDM_NEXT:
+            if (state->playlist && state->playlistIndex < state->playlistCount - 1)
+                PlayIndex(state, state->playlistIndex + 1);
+            break;
+
+        case IDM_VOL_UP:
+            state->volume = min(100, state->volume + 5);
+            ApplyVolume(state);
+            SaveVolume(state);
+            UpdateVolumeSlider(state);
+            UpdateStatus(state);
+            break;
+
+        case IDM_VOL_DOWN:
+            state->volume = max(0, state->volume - 5);
+            ApplyVolume(state);
+            SaveVolume(state);
+            UpdateVolumeSlider(state);
+            UpdateStatus(state);
+            break;
+
+        case IDM_MUTE:
+            state->isMuted = !state->isMuted;
+            ApplyVolume(state);
+            UpdateStatus(state);
+            break;
+
+        case IDM_SEEK_FWD:
+            state->position = min(state->duration, state->position + 10.0);
+            if (state->useDirectShow) DSPlayer_Seek(state->pDSPlayer, state->position);
+            else                      MFPlayer_Seek(state->pMFPlayer, state->position);
+            UpdateSeekbar(state);
+            UpdateStatus(state);
+            break;
+
+        case IDM_SEEK_BACK:
+            state->position = max(0.0, state->position - 10.0);
+            if (state->useDirectShow) DSPlayer_Seek(state->pDSPlayer, state->position);
+            else                      MFPlayer_Seek(state->pMFPlayer, state->position);
+            UpdateSeekbar(state);
+            UpdateStatus(state);
+            break;
+
+        // Defect #15 fix
+        case IDM_FULLSCREEN:
+            ToggleFullscreen(state);
+            break;
+
+        // Defect #17 fix
+        case IDM_ALWAYSONTOP:
+            state->isAlwaysOnTop = !state->isAlwaysOnTop;
+            SetWindowPos(state->hMainWnd,
+                state->isAlwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST,
+                0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            break;
+
+        case IDM_SHOWPLAYLIST:
+            state->showPlaylist = !state->showPlaylist;
+            UpdatePlaylist(state);
+            UpdateLayout(state);
+            break;
+
+        case IDM_FILEINFO: {
+            TCHAR* f = _tcsrchr(state->filePath, TEXT('\\'));
+            f = f ? f + 1 : state->filePath;
+            TCHAR info[256];
+            int dm = (int)(state->duration / 60), ds = (int)state->duration % 60;
+            _sntprintf(info, 256, TEXT("File: %s\nDuration: %02d:%02d"), f, dm, ds);
+            MessageBox(hWnd, info, APP_NAME, MB_OK | MB_ICONINFORMATION);
+            break;
+        }
+
+        case IDM_ABOUT:
+            MessageBox(hWnd,
+                TEXT("MediaShow2 v1.0\n")
+                TEXT("Multimedia lister plugin for Total Commander\n\n")
+                TEXT("Shortcuts:\n")
+                TEXT("  Space  Play/Pause\n")
+                TEXT("  S      Stop\n")
+                TEXT("  \u2190\u2192    Seek \u00B110s\n")
+                TEXT("  \u2191\u2193    Volume \u00B15%\n")
+                TEXT("  M      Mute\n")
+                TEXT("  L      Toggle Playlist\n")
+                TEXT("  F11    Fullscreen\n")
+                TEXT("  Ctrl+T Always on Top"),
+                APP_NAME, MB_OK | MB_ICONINFORMATION);
+            break;
+        }
+        return 0;
+    }
+
+    /* ---- Timer: position polling ---- */
+    case WM_TIMER:
+        if (wParam == 1 && state) {
+            double newPos = state->useDirectShow ?
+                DSPlayer_GetPosition(state->pDSPlayer) :
+                MFPlayer_GetPosition(state->pMFPlayer);
+            if (newPos > 0) state->position = newPos;
+            UpdateStatus(state);
+            UpdateSeekbar(state);
+        }
+        return 0;
+
+    /* ---- Cleanup ---- */
+    case WM_DESTROY:
+        if (state) {
+            KillTimer(hWnd, 1);
+            if (state->isFullscreen && state->hFullscreenWnd) {
+                SetParent(state->hVideoWnd, hWnd);
+                DestroyWindow(state->hFullscreenWnd);
+            }
+            FreePlaylist(state);
+            MFPlayer_Destroy(state->pMFPlayer);
+            DSPlayer_Destroy(state->pDSPlayer);
+            RemoveWindowSubclass(state->hVideoWnd, VideoWndProc, 0);
+            if (state->hFont)     DeleteObject(state->hFont);
+            if (state->hIconFont) DeleteObject(state->hIconFont);
+            if (state->hBackBrush) DeleteObject(state->hBackBrush);
+            free(state);
+            RemoveProp(hWnd, TEXT("STATE"));
+        }
+        return 0;
+    }
+    return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+/* -----------------------------------------------------------------------
+   Window class registration
+   ----------------------------------------------------------------------- */
+static void RegisterMainWndClass() {
+    if (mainWndClass) return;
+    WNDCLASSEX wc = {0};
+    wc.cbSize        = sizeof(WNDCLASSEX);
+    wc.style         = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+    wc.lpfnWndProc   = cbNewMain;
+    wc.hInstance     = GetModuleHandle(0);
+    wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszClassName = TEXT("MediaShow2Main");
+    mainWndClass = RegisterClassEx(&wc);
+}
+
+/* -----------------------------------------------------------------------
+   TC WLX API
+   ----------------------------------------------------------------------- */
+HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
+    int n = MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, NULL, 0);
+    TCHAR* w = (TCHAR*)calloc(n, sizeof(TCHAR));
+    MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, w, n);
+    HWND h = ListLoadW(ParentWin, w, ShowFlags);
+    free(w);
+    return h;
+}
+
+HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
+    RegisterMainWndClass();
+    HWND hWnd = CreateWindowEx(0, TEXT("MediaShow2Main"), APP_NAME,
+        WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
+        0, 0, 100, 100,
+        ParentWin, (HMENU)IDC_MAIN, GetModuleHandle(0), NULL);
+    if (!hWnd) return NULL;
+
+    PluginState* state = GetState(hWnd);
+    if (!state) { DestroyWindow(hWnd); return NULL; }
+
+    // Defect #7 fix: store ParentWin for correct itm_next routing
+    state->hParentWnd = ParentWin;
+
+    // Defect #8 fix: read dark mode flag from TC
+    state->isDarkMode = ((ShowFlags & lcp_darkmode) || (ShowFlags & lcp_darkmodenative)) ? TRUE : FALSE;
+    ApplyTheme(state);
+
+    _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
+    BuildPlaylist(state, ParentWin, FileToLoad);
+    state->showPlaylist = IsAudioOnly(FileToLoad);
+
+    SetTimer(hWnd, 1, 500, NULL);
+    UpdatePlaylist(state);
+    UpdateLayout(state);
+
+    // Open and start playback
+    state->useDirectShow = FALSE;
+    HRESULT hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
+    if (SUCCEEDED(hr)) {
+        state->duration = MFPlayer_GetDuration(state->pMFPlayer);
+        ApplyVolume(state);           // Defect #2 fix
+        MFPlayer_Play(state->pMFPlayer);
+        state->isPlaying = TRUE;
+    } else if (state->pDSPlayer) {
+        hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
+        if (SUCCEEDED(hr)) {
+            state->useDirectShow = TRUE;
+            state->duration = DSPlayer_GetDuration(state->pDSPlayer);
+            ApplyVolume(state);       // Defect #2 fix
+            DSPlayer_Play(state->pDSPlayer);
+            state->isPlaying = TRUE;
+        }
+    }
+
+    UpdateStatus(state);
+    UpdateSeekbar(state);
+    UpdateVolumeSlider(state);
+    return hWnd;
+}
+
+int __stdcall ListLoadNext(HWND ParentWin, HWND PluginWin, char* FileToLoad, int ShowFlags) {
+    int n = MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, NULL, 0);
+    TCHAR* w = (TCHAR*)calloc(n, sizeof(TCHAR));
+    MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, w, n);
+    int r = ListLoadNextW(ParentWin, PluginWin, w, ShowFlags);
+    free(w);
+    return r;
+}
+
+int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, int ShowFlags) {
+    PluginState* state = GetState(PluginWin);
+    if (!state) return LISTPLUGIN_ERROR;
+
+    // Stop current playback
+    if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+    else                      MFPlayer_Stop(state->pMFPlayer);
+
+    // Defect #8 fix: update dark mode flag if TC has changed it
+    BOOL dm = ((ShowFlags & lcp_darkmode) || (ShowFlags & lcp_darkmodenative)) ? TRUE : FALSE;
+    if (dm != state->isDarkMode) {
+        state->isDarkMode = dm;
+        ApplyTheme(state);
+    }
+
+    _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
+
+    state->useDirectShow = FALSE;
+    HRESULT hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
+    if (SUCCEEDED(hr)) {
+        state->duration  = MFPlayer_GetDuration(state->pMFPlayer);
+        ApplyVolume(state);           // Defect #2 fix
+        MFPlayer_Play(state->pMFPlayer);
+        state->isPlaying = TRUE;
+    } else if (state->pDSPlayer) {
+        hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
+        if (SUCCEEDED(hr)) {
+            state->useDirectShow = TRUE;
+            state->duration  = DSPlayer_GetDuration(state->pDSPlayer);
+            ApplyVolume(state);       // Defect #2 fix
+            DSPlayer_Play(state->pDSPlayer);
+            state->isPlaying = TRUE;
+        }
+    }
+
+    state->isPaused     = FALSE;
+    state->showPlaylist = IsAudioOnly(FileToLoad);
+    UpdatePlaylist(state);
+    UpdateLayout(state);
+    UpdateStatus(state);
+    UpdateSeekbar(state);
+    return LISTPLUGIN_OK;
+}
+
+void __stdcall ListCloseWindow(HWND ListWin) {
+    PluginState* state = GetState(ListWin);
+    if (state) {
+        if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+        else                      MFPlayer_Stop(state->pMFPlayer);
+    }
+    DestroyWindow(ListWin);
+}
+
+int __stdcall ListNotificationReceived(HWND ListWin, int Message, WPARAM wParam, LPARAM lParam) {
+    if (Message == WM_COMMAND) {
+        PluginState* state = GetState(ListWin);
+        if (state) SendMessage(ListWin, WM_COMMAND, wParam, lParam);
+    }
+    return 0;
+}
+
+void __stdcall ListGetDetectString(char* DetectString, int maxlen) {
+    snprintf(DetectString, maxlen,
+        "MULTIMEDIA & (ext=\"AVI\" | ext=\"MPG\" | ext=\"MPEG\" | ext=\"ASF\" | "
+        "ext=\"VOB\" | ext=\"MP1\" | ext=\"MP2\" | ext=\"MP3\" | ext=\"WAV\" | "
+        "ext=\"OGG\" | ext=\"WMA\" | ext=\"DAT\" | ext=\"MKV\" | ext=\"WEBM\" | "
+        "ext=\"MP4\" | ext=\"M4A\" | ext=\"FLAC\" | ext=\"AAC\" | ext=\"OPUS\" | "
+        "ext=\"MID\" | ext=\"MIDI\" | ext=\"KAR\")");
+}
+
+void __stdcall ListSetDefaultParams(ListDefaultParamStruct* dps) {
+    if (iniPath[0] == 0 && dps && dps->DefaultIniName[0]) {
+        MultiByteToWideChar(CP_ACP, 0, dps->DefaultIniName, -1, iniPath, MAX_PATH);
+    }
+}
+
+int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter) {
+    PluginState* state = GetState(ListWin);
+    if (!state) return LISTPLUGIN_ERROR;
+
+    if (Command == lc_newparams) {
+        // Defect #20 fix: re-apply theme when TC toggles dark mode
+        BOOL dm = ((Parameter & lcp_darkmode) || (Parameter & lcp_darkmodenative)) ? TRUE : FALSE;
+        if (dm != state->isDarkMode) {
+            state->isDarkMode = dm;
+            ApplyTheme(state);
+        }
+        InvalidateRect(ListWin, NULL, TRUE);
+        return LISTPLUGIN_OK;
+    }
+
+    if (Command == lc_setpercent && state->duration > 0) {
+        state->position = state->duration * Parameter / 100.0;
+        if (state->useDirectShow) DSPlayer_Seek(state->pDSPlayer, state->position);
+        else                      MFPlayer_Seek(state->pMFPlayer, state->position);
+        UpdateSeekbar(state);
+        return LISTPLUGIN_OK;
+    }
+
+    return LISTPLUGIN_ERROR;
+}
+
+/* ---- Stubs for unused TC API functions ---- */
+int     __stdcall ListSearchText(HWND, char*, int)               { return LISTPLUGIN_ERROR; }
+int     __stdcall ListSearchTextW(HWND, WCHAR*, int)             { return LISTPLUGIN_ERROR; }
+int     __stdcall ListSearchDialog(HWND, int)                    { return LISTPLUGIN_ERROR; }
+int     __stdcall ListPrint(HWND, char*, char*, int, RECT*)      { return LISTPLUGIN_ERROR; }
+int     __stdcall ListPrintW(HWND, WCHAR*, WCHAR*, int, RECT*)   { return LISTPLUGIN_ERROR; }
+HBITMAP __stdcall ListGetPreviewBitmap(char*, int, int, char*, int)   { return NULL; }
+HBITMAP __stdcall ListGetPreviewBitmapW(WCHAR*, int, int, char*, int) { return NULL; }
+
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
+    if (reason == DLL_PROCESS_ATTACH) DisableThreadLibraryCalls(hModule);
+    return TRUE;
+}

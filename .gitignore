@@ -1,0 +1,28 @@
+# Build directories
+build/
+build_x64/
+
+# Compiled binaries
+*.dll
+*.exe
+*.lib
+*.pdb
+*.ilk
+*.obj
+*.o
+*.exp
+
+# WLX packages (built artifacts)
+*.wlx
+*.wlx64
+
+# IDE files
+.vs/
+*.user
+*.suo
+CMakeSettings.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
