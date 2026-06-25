@@ -340,7 +340,7 @@ static void UpdateStatus(PluginState* state) {
 static void UpdateSeekbar(PluginState* state) {
     if (!state || !state->hSeekbar) return;
     int pos = (state->duration > 0) ? (int)(state->position / state->duration * 100) : 0;
-    SendMessage(state->hSeekbar, TBM_SETPOS, FALSE, pos);
+    SendMessage(state->hSeekbar, TBM_SETPOS, TRUE, pos);
 }
 
 static void UpdateVolumeSlider(PluginState* state) {
