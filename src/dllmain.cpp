@@ -46,7 +46,6 @@ struct PluginState {
     BOOL  isMuted;
     BOOL  showPlaylist;
     BOOL  isFullscreen;
-    BOOL  isAlwaysOnTop;
     BOOL  isDarkMode;
     DWORD lastClickTime;
     double duration;
@@ -499,8 +498,6 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_FULLSCREEN,
         state->isFullscreen ? TEXT("Exit Fullscreen\tF11") : TEXT("Fullscreen\tF11"));
-    AppendMenu(hMenu, state->isAlwaysOnTop ? MF_CHECKED : MF_STRING,
-        IDM_ALWAYSONTOP, TEXT("Always on Top\tCtrl+T"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
         IDM_SHOWPLAYLIST, TEXT("Show/Hide Playlist\tL"));
@@ -1054,10 +1051,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             if (state->isFullscreen)
                 SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
             return 0;
-        case 'T':
-            if (GetKeyState(VK_CONTROL) & 0x8000)
-                SendMessage(hWnd, WM_COMMAND, IDM_ALWAYSONTOP, 0);
-            return 0;
         }
         break;
     }
@@ -1158,14 +1151,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         // Defect #15 fix
         case IDM_FULLSCREEN:
             ToggleFullscreen(state);
-            break;
-
-        // Defect #17 fix
-        case IDM_ALWAYSONTOP:
-            state->isAlwaysOnTop = !state->isAlwaysOnTop;
-            SetWindowPos(state->hMainWnd,
-                state->isAlwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST,
-                0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
             break;
 
         case IDM_SHOWPLAYLIST:
