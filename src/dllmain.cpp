@@ -53,8 +53,11 @@ struct PluginState {
     double videoAr;          // native video aspect ratio (0 = unknown)
     int   volume;
     TCHAR** playlist;
+    FILETIME* fileDates;
     int   playlistCount;
     int   playlistIndex;
+    int   sortColumn;
+    BOOL  sortAscending;
     HFONT hFont;
     HFONT hIconFont;        // Segoe Fluent Icons / MDL2 Assets for toolbar
     HBRUSH hBackBrush;
@@ -72,9 +75,13 @@ static void FreePlaylist(PluginState* state) {
     for (int i = 0; i < state->playlistCount; i++)
         free(state->playlist[i]);
     free(state->playlist);
+    free(state->fileDates);
     state->playlist      = NULL;
+    state->fileDates     = NULL;
     state->playlistCount = 0;
     state->playlistIndex = 0;
+    state->sortColumn    = -1;
+    state->sortAscending = TRUE;
 }
 
 /* -----------------------------------------------------------------------
@@ -145,20 +152,21 @@ static BOOL IsAudioOnly(const TCHAR* filePath) {
 /* -----------------------------------------------------------------------
    Directory scan (Defect #12 + #13 fix)
    ----------------------------------------------------------------------- */
-static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, int* outCount) {
+static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outDates, int* outCount) {
     TCHAR searchPath[MAX_PATH];
     _sntprintf(searchPath, MAX_PATH, TEXT("%s\\*.*"), dir);
 
     int allocSize = 64;
     int count     = 0;
     TCHAR** files = (TCHAR**)calloc(allocSize, sizeof(TCHAR*));
-    if (!files) { *outFiles = NULL; *outCount = 0; return; }
+    FILETIME* dates = (FILETIME*)calloc(allocSize, sizeof(FILETIME));
+    if (!files || !dates) { free(files); free(dates); *outFiles = NULL; *outDates = NULL; *outCount = 0; return; }
 
     WIN32_FIND_DATA fd;
     HANDLE hFind = FindFirstFile(searchPath, &fd);
     if (hFind == INVALID_HANDLE_VALUE) {
-        free(files);
-        *outFiles = NULL; *outCount = 0;
+        free(files); free(dates);
+        *outFiles = NULL; *outDates = NULL; *outCount = 0;
         return;
     }
 
@@ -170,24 +178,27 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, int* outCount) 
         if (count >= allocSize) {
             allocSize *= 2;
             TCHAR** tmp = (TCHAR**)realloc(files, allocSize * sizeof(TCHAR*));
-            if (!tmp) break;   // Defect #13: keep current list on alloc failure
-            files = tmp;
+            FILETIME* tmpD = (FILETIME*)realloc(dates, allocSize * sizeof(FILETIME));
+            if (!tmp || !tmpD) break;
+            files = tmp; dates = tmpD;
         }
 
         TCHAR fullPath[MAX_PATH];
         _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fd.cFileName);
-        files[count++] = _tcsdup(fullPath);
+        files[count] = _tcsdup(fullPath);
+        dates[count] = fd.ftCreationTime;
+        count++;
 
     } while (FindNextFile(hFind, &fd));
     FindClose(hFind);
 
-    // Defect #12: free the empty array if no matches
     if (count == 0) {
-        free(files);
-        *outFiles = NULL; *outCount = 0;
+        free(files); free(dates);
+        *outFiles = NULL; *outDates = NULL; *outCount = 0;
         return;
     }
     *outFiles = files;
+    *outDates = dates;
     *outCount = count;
 }
 
@@ -200,12 +211,13 @@ static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* curren
     if (lastSlash) *lastSlash = 0;
 
     TCHAR** files = NULL;
+    FILETIME* dates = NULL;
     int     count = 0;
-    ScanDirectoryForMedia(dir, &files, &count);
+    ScanDirectoryForMedia(dir, &files, &dates, &count);
 
     if (!files || count == 0) {
-        // Fallback: single-entry playlist with the current file
         state->playlist      = (TCHAR**)calloc(1, sizeof(TCHAR*));
+        state->fileDates     = (FILETIME*)calloc(1, sizeof(FILETIME));
         state->playlist[0]   = _tcsdup(currentFile);
         state->playlistCount = 1;
         state->playlistIndex = 0;
@@ -213,6 +225,7 @@ static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* curren
     }
 
     state->playlist      = files;
+    state->fileDates     = dates;
     state->playlistCount = count;
     state->playlistIndex = 0;
 
@@ -222,6 +235,61 @@ static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* curren
             break;
         }
     }
+}
+
+/* -----------------------------------------------------------------------
+   Playlist sorting (globals for qsort comparator)
+   ----------------------------------------------------------------------- */
+static TCHAR**   g_sort_pl  = NULL;
+static FILETIME* g_sort_dt  = NULL;
+static int       g_sort_col = 0;
+static BOOL      g_sort_asc = TRUE;
+
+static int __cdecl PlaylistCmp(void* ctx, const void* a, const void* b) {
+    (void)ctx;
+    int ia = *(const int*)a;
+    int ib = *(const int*)b;
+    int r = 0;
+    switch (g_sort_col) {
+    case 1: r = _tcsicmp(g_sort_pl[ia], g_sort_pl[ib]); break;
+    case 2: r = IsAudioOnly(g_sort_pl[ia]) - IsAudioOnly(g_sort_pl[ib]); break;
+    case 3: r = CompareFileTime(&g_sort_dt[ia], &g_sort_dt[ib]); break;
+    default: r = ia - ib; break;
+    }
+    return g_sort_asc ? r : -r;
+}
+
+static void SortPlaylist(PluginState* state) {
+    if (state->sortColumn < 0 || state->sortColumn > 3) return;
+    if (state->playlistCount <= 1) return;
+
+    int* idx = (int*)calloc(state->playlistCount, sizeof(int));
+    if (!idx) return;
+    for (int i = 0; i < state->playlistCount; i++) idx[i] = i;
+
+    g_sort_pl  = state->playlist;
+    g_sort_dt  = state->fileDates;
+    g_sort_col = state->sortColumn;
+    g_sort_asc = state->sortAscending;
+    qsort_s(idx, state->playlistCount, sizeof(int), PlaylistCmp, NULL);
+
+    TCHAR** newPl  = (TCHAR**)calloc(state->playlistCount, sizeof(TCHAR*));
+    FILETIME* newDt = (FILETIME*)calloc(state->playlistCount, sizeof(FILETIME));
+    if (!newPl || !newDt) { free(idx); free(newPl); free(newDt); return; }
+
+    int newIdx = 0;
+    for (int i = 0; i < state->playlistCount; i++) {
+        newPl[newIdx]  = state->playlist[idx[i]];
+        newDt[newIdx]  = state->fileDates[idx[i]];
+        if (idx[i] == state->playlistIndex) state->playlistIndex = newIdx;
+        newIdx++;
+    }
+
+    free(state->playlist);
+    free(state->fileDates);
+    state->playlist  = newPl;
+    state->fileDates = newDt;
+    free(idx);
 }
 
 /* -----------------------------------------------------------------------
@@ -245,15 +313,31 @@ static void UpdatePlaylist(PluginState* state) {
         TCHAR* fname = _tcsrchr(state->playlist[i], TEXT('\\'));
         fname = fname ? fname + 1 : state->playlist[i];
 
-        TCHAR display[MAX_PATH + 4];
-        _sntprintf(display, MAX_PATH + 4,
+        TCHAR num[8]; _sntprintf(num, 8, TEXT("%d"), i + 1);
+        BOOL audio = IsAudioOnly(state->playlist[i]);
+
+        TCHAR name[MAX_PATH + 4];
+        _sntprintf(name, MAX_PATH + 4,
             (i == state->playlistIndex) ? TEXT("\u25BA %s") : TEXT("  %s"), fname);
+
+        TCHAR dateBuf[32] = TEXT("");
+        if (state->fileDates) {
+            FILETIME localFt;
+            SYSTEMTIME st;
+            FileTimeToLocalFileTime(&state->fileDates[i], &localFt);
+            if (FileTimeToSystemTime(&localFt, &st))
+                _sntprintf(dateBuf, 32, TEXT("%04d-%02d-%02d %02d:%02d"),
+                    st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute);
+        }
 
         LVITEM lvi = {0};
         lvi.mask    = LVIF_TEXT;
         lvi.iItem   = i;
-        lvi.pszText = display;
+        lvi.pszText = num;
         ListView_InsertItem(state->hPlaylist, &lvi);
+        ListView_SetItemText(state->hPlaylist, i, 1, name);
+        ListView_SetItemText(state->hPlaylist, i, 2, audio ? TEXT("Audio") : TEXT("Video"));
+        ListView_SetItemText(state->hPlaylist, i, 3, dateBuf);
     }
 
     if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount)
@@ -305,13 +389,13 @@ static void UpdateLayout(PluginState* state) {
     int contentH = h - tbH - statusH;
     if (contentH < 0) contentH = 0;
 
-    BOOL showVid = !state->showPlaylist;
     if (state->hVideoWnd)
-        ShowWindow(state->hVideoWnd,  showVid         ? SW_SHOW : SW_HIDE);
+        ShowWindow(state->hVideoWnd, SW_SHOW);
     if (state->hPlaylist)
-        ShowWindow(state->hPlaylist,  state->showPlaylist ? SW_SHOW : SW_HIDE);
+        ShowWindow(state->hPlaylist, state->showPlaylist ? SW_SHOW : SW_HIDE);
 
-    if (showVid && state->hVideoWnd) {
+    // Видео всегда видно — центрируем с учётом aspect ratio
+    if (state->hVideoWnd) {
         double ar = state->videoAr;
         if (ar <= 0) ar = GetVideoAspectRatio(state);
         if (ar <= 0) ar = 16.0 / 9.0;
@@ -328,6 +412,10 @@ static void UpdateLayout(PluginState* state) {
 
         MoveWindow(state->hVideoWnd, vx, tbH + vy, vw, vh, TRUE);
     }
+
+    // Плейлист поверх видео — на всю content area
+    if (state->hPlaylist)
+        MoveWindow(state->hPlaylist, 0, tbH, w, contentH, TRUE);
 
     if (state->showPlaylist && state->hPlaylist)
         MoveWindow(state->hPlaylist, 0, tbH, w, contentH, TRUE);
@@ -413,7 +501,7 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
         IDM_ALWAYSONTOP, TEXT("Always on Top\tCtrl+T"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
-        IDM_SHOWPLAYLIST, TEXT("Show Playlist\tL"));
+        IDM_SHOWPLAYLIST, TEXT("Show Playlist\tP"));
     AppendMenu(hMenu, MF_STRING, IDM_FILEINFO, TEXT("File Info\tI"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_ABOUT, TEXT("About MediaShow2"));
@@ -726,18 +814,21 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             hWnd, (HMENU)IDC_VIDEO, GetModuleHandle(0), NULL);
         SetWindowSubclass(state->hVideoWnd, VideoWndProc, 0, (DWORD_PTR)state);
 
-        state->hPlaylist = CreateWindow(WC_LISTVIEW, TEXT(""),
-            WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
+        state->hPlaylist = CreateWindowEx(WS_EX_LAYERED, WC_LISTVIEW, TEXT(""),
+            WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
             0, 0, 100, 100,
             hWnd, (HMENU)IDC_PLAYLIST, GetModuleHandle(0), NULL);
         ListView_SetExtendedListViewStyle(state->hPlaylist,
             LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+        SetLayeredWindowAttributes(state->hPlaylist, 0, 180, LWA_ALPHA);
 
         LVCOLUMN lvc = {0};
-        lvc.mask    = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
-        lvc.cx      = 400;
-        lvc.pszText = (TCHAR*)TEXT("Playlist");
-        ListView_InsertColumn(state->hPlaylist, 0, &lvc);
+        lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
+        lvc.fmt  = LVCFMT_LEFT;
+        lvc.cx = 40;   lvc.pszText = (TCHAR*)TEXT("#");    ListView_InsertColumn(state->hPlaylist, 0, &lvc);
+        lvc.cx = 280;  lvc.pszText = (TCHAR*)TEXT("Name");  ListView_InsertColumn(state->hPlaylist, 1, &lvc);
+        lvc.cx = 60;   lvc.pszText = (TCHAR*)TEXT("Type");  ListView_InsertColumn(state->hPlaylist, 2, &lvc);
+        lvc.cx = 120;  lvc.pszText = (TCHAR*)TEXT("Date");  ListView_InsertColumn(state->hPlaylist, 3, &lvc);
         ShowWindow(state->hPlaylist, SW_HIDE);
 
         state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
@@ -798,16 +889,19 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         return 0;
     }
 
-    /* ---- Mouse wheel: volume only (Defect #3 fix) ---- */
+    /* ---- Mouse wheel: volume or playlist scroll ---- */
     case WM_MOUSEWHEEL: {
         if (!state) break;
-        // Scroll UP (delta > 0) → volume up; DOWN → volume down
-        int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-        state->volume = max(0, min(100, state->volume + (delta > 0 ? 5 : -5)));
-        ApplyVolume(state);
-        SaveVolume(state);
-        UpdateVolumeSlider(state);
-        UpdateStatus(state);
+        if (state->showPlaylist && state->hPlaylist) {
+            SendMessage(state->hPlaylist, WM_MOUSEWHEEL, wParam, lParam);
+        } else {
+            int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            state->volume = max(0, min(100, state->volume + (delta > 0 ? 5 : -5)));
+            ApplyVolume(state);
+            SaveVolume(state);
+            UpdateVolumeSlider(state);
+            UpdateStatus(state);
+        }
         return 0;
     }
 
@@ -834,8 +928,26 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
         if (hdr->code == NM_DBLCLK) {
             NMITEMACTIVATE* nm = (NMITEMACTIVATE*)lParam;
-            if (nm->iItem >= 0 && nm->iItem < state->playlistCount)
+            if (nm->iItem >= 0 && nm->iItem < state->playlistCount) {
                 PlayIndex(state, nm->iItem);
+                state->showPlaylist = FALSE;
+                UpdateLayout(state);
+                SetFocus(state->hVideoWnd);
+            }
+            return 0;
+        }
+
+        if (hdr->code == LVN_COLUMNCLICK) {
+            NMLISTVIEW* nmlv = (NMLISTVIEW*)lParam;
+            int col = nmlv->iSubItem;
+            if (col == state->sortColumn)
+                state->sortAscending = !state->sortAscending;
+            else {
+                state->sortColumn = col;
+                state->sortAscending = TRUE;
+            }
+            SortPlaylist(state);
+            UpdatePlaylist(state);
             return 0;
         }
 
@@ -847,6 +959,9 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                     free(state->playlist[idx]);
                     memmove(&state->playlist[idx], &state->playlist[idx + 1],
                         (state->playlistCount - idx - 1) * sizeof(TCHAR*));
+                    if (state->fileDates)
+                        memmove(&state->fileDates[idx], &state->fileDates[idx + 1],
+                            (state->playlistCount - idx - 1) * sizeof(FILETIME));
                     state->playlistCount--;
                     if (state->playlistIndex >= state->playlistCount)
                         state->playlistIndex = max(0, state->playlistCount - 1);
@@ -854,7 +969,46 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 }
             } else if (kd->wVKey == VK_RETURN) {
                 int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
-                if (idx >= 0) PlayIndex(state, idx);
+                if (idx >= 0) {
+                    PlayIndex(state, idx);
+                    state->showPlaylist = FALSE;
+                    UpdateLayout(state);
+                    SetFocus(state->hVideoWnd);
+                }
+            } else if (kd->wVKey == VK_UP && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
+                if (idx > 0) {
+                    TCHAR* tmp = state->playlist[idx];
+                    state->playlist[idx] = state->playlist[idx - 1];
+                    state->playlist[idx - 1] = tmp;
+                    if (state->fileDates) {
+                        FILETIME td = state->fileDates[idx];
+                        state->fileDates[idx] = state->fileDates[idx - 1];
+                        state->fileDates[idx - 1] = td;
+                    }
+                    if (state->playlistIndex == idx) state->playlistIndex--;
+                    else if (state->playlistIndex == idx - 1) state->playlistIndex++;
+                    UpdatePlaylist(state);
+                    ListView_SetItemState(state->hPlaylist, idx - 1,
+                        LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+                }
+            } else if (kd->wVKey == VK_DOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
+                if (idx >= 0 && idx < state->playlistCount - 1) {
+                    TCHAR* tmp = state->playlist[idx];
+                    state->playlist[idx] = state->playlist[idx + 1];
+                    state->playlist[idx + 1] = tmp;
+                    if (state->fileDates) {
+                        FILETIME td = state->fileDates[idx];
+                        state->fileDates[idx] = state->fileDates[idx + 1];
+                        state->fileDates[idx + 1] = td;
+                    }
+                    if (state->playlistIndex == idx) state->playlistIndex++;
+                    else if (state->playlistIndex == idx + 1) state->playlistIndex--;
+                    UpdatePlaylist(state);
+                    ListView_SetItemState(state->hPlaylist, idx + 1,
+                        LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+                }
             }
             return 0;
         }
@@ -873,7 +1027,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         case VK_DOWN:  SendMessage(hWnd, WM_COMMAND, IDM_VOL_DOWN,      0); return 0;
         case 'M':      SendMessage(hWnd, WM_COMMAND, IDM_MUTE,          0); return 0;
         case VK_F11:   SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN,    0); return 0;
-        case 'L':      SendMessage(hWnd, WM_COMMAND, IDM_SHOWPLAYLIST,  0); return 0;
+        case 'P':      SendMessage(hWnd, WM_COMMAND, IDM_SHOWPLAYLIST,  0); return 0;
         case 'I':      SendMessage(hWnd, WM_COMMAND, IDM_FILEINFO,      0); return 0;
         case VK_ESCAPE:
             if (state->isFullscreen)
@@ -997,6 +1151,10 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             state->showPlaylist = !state->showPlaylist;
             UpdatePlaylist(state);
             UpdateLayout(state);
+            if (state->showPlaylist)
+                SetFocus(state->hPlaylist);
+            else
+                SetFocus(state->hVideoWnd);
             break;
 
         case IDM_FILEINFO: {
