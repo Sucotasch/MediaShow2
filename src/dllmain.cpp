@@ -629,6 +629,17 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
         return 1;
     }
+    case WM_SIZE: {
+        if (state) {
+            RECT rc;
+            GetClientRect(hWnd, &rc);
+            if (state->useDirectShow)
+                DSPlayer_UpdateVideoWindow(state->pDSPlayer, &rc);
+            else
+                MFPlayer_UpdateVideoWindow(state->pMFPlayer, &rc);
+        }
+        break;
+    }
     // Defect #14 fix: double-click triggers fullscreen toggle
     case WM_LBUTTONDBLCLK:
         if (state)
