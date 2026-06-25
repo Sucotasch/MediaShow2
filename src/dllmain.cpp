@@ -50,6 +50,7 @@ struct PluginState {
     BOOL  isDarkMode;
     double duration;
     double position;
+    double videoAr;          // native video aspect ratio (0 = unknown)
     int   volume;
     TCHAR** playlist;
     int   playlistCount;
@@ -260,6 +261,13 @@ static void UpdatePlaylist(PluginState* state) {
             LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 }
 
+static double GetVideoAspectRatio(PluginState* state) {
+    if (!state) return 0;
+    if (state->useDirectShow)
+        return DSPlayer_GetAspectRatio(state->pDSPlayer);
+    return MFPlayer_GetAspectRatio(state->pMFPlayer);
+}
+
 static void UpdateLayout(PluginState* state) {
     if (!state || !state->hMainWnd) return;
     RECT rc;
@@ -303,17 +311,22 @@ static void UpdateLayout(PluginState* state) {
     if (state->hPlaylist)
         ShowWindow(state->hPlaylist,  state->showPlaylist ? SW_SHOW : SW_HIDE);
 
-    if (showVid && state->hVideoWnd)
-        MoveWindow(state->hVideoWnd, 0, tbH, w, contentH, TRUE);
-    if (state->showPlaylist && state->hPlaylist)
-        MoveWindow(state->hPlaylist, 0, tbH, w, contentH, TRUE);
+    if (showVid && state->hVideoWnd) {
+        double ar = state->videoAr;
+        if (ar <= 0) ar = GetVideoAspectRatio(state);
+        if (ar <= 0) ar = 16.0 / 9.0;
 
-    if (showVid) {
-        RECT vr = { 0, 0, w, contentH };
-        if (state->useDirectShow)
-            DSPlayer_UpdateVideoWindow(state->pDSPlayer, &vr);
-        else
-            MFPlayer_UpdateVideoWindow(state->pMFPlayer, &vr);
+        int vw = w, vh = contentH;
+        double contentAr = (double)w / (double)contentH;
+        if (ar > contentAr) {
+            vh = (int)(w / ar);
+        } else {
+            vw = (int)(contentH * ar);
+        }
+        int vx = (w - vw) / 2;
+        int vy = (contentH - vh) / 2;
+
+        MoveWindow(state->hVideoWnd, vx, tbH + vy, vw, vh, TRUE);
     }
 }
 
@@ -540,13 +553,22 @@ static void ToggleFullscreen(PluginState* state) {
         ShowWindow(state->hVideoWnd, SW_SHOW);
         SetParent(state->hVideoWnd, state->hFullscreenWnd);
         int fw = r.right - r.left, fh = r.bottom - r.top;
-        MoveWindow(state->hVideoWnd, 0, 0, fw, fh, TRUE);
 
-        RECT vr = { 0, 0, fw, fh };
-        if (state->useDirectShow)
-            DSPlayer_UpdateVideoWindow(state->pDSPlayer, &vr);
-        else
-            MFPlayer_UpdateVideoWindow(state->pMFPlayer, &vr);
+        double ar = state->videoAr;
+        if (ar <= 0) ar = GetVideoAspectRatio(state);
+        if (ar <= 0) ar = 16.0 / 9.0;
+
+        int vw = fw, vh = fh;
+        double screenAr = (double)fw / (double)fh;
+        if (ar > screenAr) {
+            vh = (int)(fw / ar);
+        } else {
+            vw = (int)(fh * ar);
+        }
+        int vx = (fw - vw) / 2;
+        int vy = (fh - vh) / 2;
+
+        MoveWindow(state->hVideoWnd, vx, vy, vw, vh, TRUE);
 
         ShowCursor(FALSE);
         state->isFullscreen = TRUE;
@@ -585,6 +607,9 @@ static void PlayIndex(PluginState* state, int idx) {
     state->duration  = state->useDirectShow ?
         DSPlayer_GetDuration(state->pDSPlayer) :
         MFPlayer_GetDuration(state->pMFPlayer);
+    state->videoAr   = state->useDirectShow ?
+        DSPlayer_GetAspectRatio(state->pDSPlayer) :
+        MFPlayer_GetAspectRatio(state->pMFPlayer);
     state->isPlaying = TRUE;
     state->isPaused  = FALSE;
 
@@ -725,7 +750,8 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         if (!state) break;
         HDC hdc = (HDC)wParam;
         RECT rc; GetClientRect(hWnd, &rc);
-        FillRect(hdc, &rc, state->hBackBrush);
+        FillRect(hdc, &rc, (!state->showPlaylist)
+            ? (HBRUSH)GetStockObject(BLACK_BRUSH) : state->hBackBrush);
         return 1;
     }
 
@@ -1094,7 +1120,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     HRESULT hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
     if (SUCCEEDED(hr)) {
         state->duration = MFPlayer_GetDuration(state->pMFPlayer);
-        ApplyVolume(state);           // Defect #2 fix
+        state->videoAr  = MFPlayer_GetAspectRatio(state->pMFPlayer);
+        ApplyVolume(state);
         MFPlayer_Play(state->pMFPlayer);
         state->isPlaying = TRUE;
     } else if (state->pDSPlayer) {
@@ -1102,12 +1129,14 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         if (SUCCEEDED(hr)) {
             state->useDirectShow = TRUE;
             state->duration = DSPlayer_GetDuration(state->pDSPlayer);
-            ApplyVolume(state);       // Defect #2 fix
+            state->videoAr  = DSPlayer_GetAspectRatio(state->pDSPlayer);
+            ApplyVolume(state);
             DSPlayer_Play(state->pDSPlayer);
             state->isPlaying = TRUE;
         }
     }
 
+    UpdateLayout(state);
     UpdateStatus(state);
     UpdateSeekbar(state);
     UpdateVolumeSlider(state);
@@ -1144,7 +1173,8 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     HRESULT hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
     if (SUCCEEDED(hr)) {
         state->duration  = MFPlayer_GetDuration(state->pMFPlayer);
-        ApplyVolume(state);           // Defect #2 fix
+        state->videoAr   = MFPlayer_GetAspectRatio(state->pMFPlayer);
+        ApplyVolume(state);
         MFPlayer_Play(state->pMFPlayer);
         state->isPlaying = TRUE;
     } else if (state->pDSPlayer) {
@@ -1152,7 +1182,8 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
         if (SUCCEEDED(hr)) {
             state->useDirectShow = TRUE;
             state->duration  = DSPlayer_GetDuration(state->pDSPlayer);
-            ApplyVolume(state);       // Defect #2 fix
+            state->videoAr   = DSPlayer_GetAspectRatio(state->pDSPlayer);
+            ApplyVolume(state);
             DSPlayer_Play(state->pDSPlayer);
             state->isPlaying = TRUE;
         }
