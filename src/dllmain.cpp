@@ -906,7 +906,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
         } else {
             state->clickPending = TRUE;
-            SetTimer(hWnd, IDC_CLICK_TIMER, GetDoubleClickTime() + 100, NULL);
+            SetTimer(hWnd, IDC_CLICK_TIMER, 500, NULL);
         }
         return 0;
     }
