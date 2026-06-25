@@ -54,6 +54,7 @@ struct PluginState {
     double videoAr;          // native video aspect ratio (0 = unknown)
     int   volume;
     TCHAR** playlist;
+    FILETIME* fileDates;
     int   playlistCount;
     int   playlistIndex;
     int   sortColumn;
@@ -75,7 +76,9 @@ static void FreePlaylist(PluginState* state) {
     for (int i = 0; i < state->playlistCount; i++)
         free(state->playlist[i]);
     free(state->playlist);
+    free(state->fileDates);
     state->playlist      = NULL;
+    state->fileDates     = NULL;
     state->playlistCount = 0;
     state->playlistIndex = 0;
 }
@@ -148,20 +151,21 @@ static BOOL IsAudioOnly(const TCHAR* filePath) {
 /* -----------------------------------------------------------------------
    Directory scan (Defect #12 + #13 fix)
    ----------------------------------------------------------------------- */
-static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, int* outCount) {
+static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outDates, int* outCount) {
     TCHAR searchPath[MAX_PATH];
     _sntprintf(searchPath, MAX_PATH, TEXT("%s\\*.*"), dir);
 
     int allocSize = 64;
     int count     = 0;
     TCHAR** files = (TCHAR**)calloc(allocSize, sizeof(TCHAR*));
-    if (!files) { *outFiles = NULL; *outCount = 0; return; }
+    FILETIME* dates = (FILETIME*)calloc(allocSize, sizeof(FILETIME));
+    if (!files || !dates) { free(files); free(dates); *outFiles = NULL; *outDates = NULL; *outCount = 0; return; }
 
     WIN32_FIND_DATA fd;
     HANDLE hFind = FindFirstFile(searchPath, &fd);
     if (hFind == INVALID_HANDLE_VALUE) {
-        free(files);
-        *outFiles = NULL; *outCount = 0;
+        free(files); free(dates);
+        *outFiles = NULL; *outDates = NULL; *outCount = 0;
         return;
     }
 
@@ -173,24 +177,27 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, int* outCount) 
         if (count >= allocSize) {
             allocSize *= 2;
             TCHAR** tmp = (TCHAR**)realloc(files, allocSize * sizeof(TCHAR*));
-            if (!tmp) break;   // Defect #13: keep current list on alloc failure
-            files = tmp;
+            FILETIME* tmpD = (FILETIME*)realloc(dates, allocSize * sizeof(FILETIME));
+            if (!tmp || !tmpD) break;
+            files = tmp; dates = tmpD;
         }
 
         TCHAR fullPath[MAX_PATH];
         _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fd.cFileName);
-        files[count++] = _tcsdup(fullPath);
+        files[count] = _tcsdup(fullPath);
+        dates[count] = fd.ftCreationTime;
+        count++;
 
     } while (FindNextFile(hFind, &fd));
     FindClose(hFind);
 
-    // Defect #12: free the empty array if no matches
     if (count == 0) {
-        free(files);
-        *outFiles = NULL; *outCount = 0;
+        free(files); free(dates);
+        *outFiles = NULL; *outDates = NULL; *outCount = 0;
         return;
     }
     *outFiles = files;
+    *outDates = dates;
     *outCount = count;
 }
 
@@ -203,12 +210,13 @@ static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* curren
     if (lastSlash) *lastSlash = 0;
 
     TCHAR** files = NULL;
+    FILETIME* dates = NULL;
     int     count = 0;
-    ScanDirectoryForMedia(dir, &files, &count);
+    ScanDirectoryForMedia(dir, &files, &dates, &count);
 
     if (!files || count == 0) {
-        // Fallback: single-entry playlist with the current file
         state->playlist      = (TCHAR**)calloc(1, sizeof(TCHAR*));
+        state->fileDates     = (FILETIME*)calloc(1, sizeof(FILETIME));
         state->playlist[0]   = _tcsdup(currentFile);
         state->playlistCount = 1;
         state->playlistIndex = 0;
@@ -216,6 +224,7 @@ static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* curren
     }
 
     state->playlist      = files;
+    state->fileDates     = dates;
     state->playlistCount = count;
     state->playlistIndex = 0;
 
@@ -231,6 +240,7 @@ static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* curren
    Playlist sorting
    ----------------------------------------------------------------------- */
 static TCHAR**   g_sort_pl  = NULL;
+static FILETIME* g_sort_dt  = NULL;
 static int       g_sort_col = 0;
 static BOOL      g_sort_asc = TRUE;
 
@@ -242,13 +252,14 @@ static int __cdecl PlaylistCmp(void* ctx, const void* a, const void* b) {
     switch (g_sort_col) {
     case 1: r = _tcsicmp(g_sort_pl[ia], g_sort_pl[ib]); break;
     case 2: r = IsAudioOnly(g_sort_pl[ia]) - IsAudioOnly(g_sort_pl[ib]); break;
+    case 3: r = CompareFileTime(&g_sort_dt[ia], &g_sort_dt[ib]); break;
     default: r = ia - ib; break;
     }
     return g_sort_asc ? r : -r;
 }
 
 static void SortPlaylist(PluginState* state) {
-    if (state->sortColumn < 0 || state->sortColumn > 2) return;
+    if (state->sortColumn < 0 || state->sortColumn > 3) return;
     if (state->playlistCount <= 1) return;
 
     int* idx = (int*)calloc(state->playlistCount, sizeof(int));
@@ -256,22 +267,27 @@ static void SortPlaylist(PluginState* state) {
     for (int i = 0; i < state->playlistCount; i++) idx[i] = i;
 
     g_sort_pl  = state->playlist;
+    g_sort_dt  = state->fileDates;
     g_sort_col = state->sortColumn;
     g_sort_asc = state->sortAscending;
     qsort_s(idx, state->playlistCount, sizeof(int), PlaylistCmp, NULL);
 
     TCHAR** newPl = (TCHAR**)calloc(state->playlistCount, sizeof(TCHAR*));
-    if (!newPl) { free(idx); return; }
+    FILETIME* newDt = (FILETIME*)calloc(state->playlistCount, sizeof(FILETIME));
+    if (!newPl || !newDt) { free(idx); free(newPl); free(newDt); return; }
 
     int newIdx = 0;
     for (int i = 0; i < state->playlistCount; i++) {
-        newPl[newIdx] = state->playlist[idx[i]];
+        newPl[newIdx]  = state->playlist[idx[i]];
+        newDt[newIdx]  = state->fileDates[idx[i]];
         if (idx[i] == state->playlistIndex) state->playlistIndex = newIdx;
         newIdx++;
     }
 
     free(state->playlist);
-    state->playlist = newPl;
+    free(state->fileDates);
+    state->playlist  = newPl;
+    state->fileDates = newDt;
     free(idx);
 }
 
@@ -310,6 +326,17 @@ static void UpdatePlaylist(PluginState* state) {
         ListView_InsertItem(state->hPlaylist, &lvi);
         ListView_SetItemText(state->hPlaylist, i, 1, display);
         ListView_SetItemText(state->hPlaylist, i, 2, audio ? TEXT("Audio") : TEXT("Video"));
+
+        TCHAR dateBuf[32] = TEXT("");
+        if (state->fileDates) {
+            FILETIME localFt;
+            SYSTEMTIME st;
+            FileTimeToLocalFileTime(&state->fileDates[i], &localFt);
+            if (FileTimeToSystemTime(&localFt, &st))
+                _sntprintf(dateBuf, 32, TEXT("%04d-%02d-%02d %02d:%02d"),
+                    st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute);
+        }
+        ListView_SetItemText(state->hPlaylist, i, 3, dateBuf);
     }
 
     if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount)
@@ -783,6 +810,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         // Defect #2 fix: load persisted volume; don't hardcode 80 here
         state->volume   = LoadVolume();
         state->sortColumn = -1;
+        state->sortColumn = -1;
         state->hFont = CreateFont(
             -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -807,8 +835,9 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
         lvc.fmt  = LVCFMT_LEFT;
         lvc.cx = 40;   lvc.pszText = (TCHAR*)TEXT("#");    ListView_InsertColumn(state->hPlaylist, 0, &lvc);
-        lvc.cx = 280;  lvc.pszText = (TCHAR*)TEXT("Name");  ListView_InsertColumn(state->hPlaylist, 1, &lvc);
-        lvc.cx = 60;   lvc.pszText = (TCHAR*)TEXT("Type");  ListView_InsertColumn(state->hPlaylist, 2, &lvc);
+        lvc.cx = 240;  lvc.pszText = (TCHAR*)TEXT("Name");  ListView_InsertColumn(state->hPlaylist, 1, &lvc);
+        lvc.cx = 55;   lvc.pszText = (TCHAR*)TEXT("Type");  ListView_InsertColumn(state->hPlaylist, 2, &lvc);
+        lvc.cx = 120;  lvc.pszText = (TCHAR*)TEXT("Date");  ListView_InsertColumn(state->hPlaylist, 3, &lvc);
         ShowWindow(state->hPlaylist, SW_HIDE);
 
         state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
@@ -926,6 +955,20 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 state->showPlaylist = FALSE;
                 UpdateLayout(state);
             }
+            return 0;
+        }
+
+        if (hdr->code == LVN_COLUMNCLICK) {
+            NMLISTVIEW* nmlv = (NMLISTVIEW*)lParam;
+            int col = nmlv->iSubItem;
+            if (col == state->sortColumn)
+                state->sortAscending = !state->sortAscending;
+            else {
+                state->sortColumn = col;
+                state->sortAscending = TRUE;
+            }
+            SortPlaylist(state);
+            UpdatePlaylist(state);
             return 0;
         }
 
