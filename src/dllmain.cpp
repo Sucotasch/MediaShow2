@@ -877,16 +877,28 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     }
 
     /* ---- Mouse click on video: pause / double-click: fullscreen ---- */
-    case WM_LBUTTONDOWN: {
+    case WM_PARENTNOTIFY: {
         if (!state || state->showPlaylist) break;
-        DWORD now = GetTickCount();
-        if (state->lastClickTime && (now - state->lastClickTime <= 800)) {
-            state->lastClickTime = 0;
-            SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
-            if (state->isPaused) SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
-        } else {
-            state->lastClickTime = now;
-            SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
+        if (LOWORD(wParam) == WM_LBUTTONDOWN) {
+            int cx = GET_X_LPARAM(lParam);
+            int cy = GET_Y_LPARAM(lParam);
+            // Проверяем, что клик в области видео
+            if (state->hVideoWnd && IsWindowVisible(state->hVideoWnd)) {
+                RECT vrc;
+                GetWindowRect(state->hVideoWnd, &vrc);
+                MapWindowPoints(HWND_DESKTOP, hWnd, (LPPOINT)&vrc, 2);
+                if (cx >= vrc.left && cx <= vrc.right && cy >= vrc.top && cy <= vrc.bottom) {
+                    DWORD now = GetTickCount();
+                    if (state->lastClickTime && (now - state->lastClickTime <= 800)) {
+                        state->lastClickTime = 0;
+                        SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+                        if (state->isPaused) SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
+                    } else {
+                        state->lastClickTime = now;
+                        SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
+                    }
+                }
+            }
         }
         return 0;
     }
