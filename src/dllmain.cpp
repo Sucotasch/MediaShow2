@@ -391,12 +391,8 @@ static void UpdateLayout(PluginState* state) {
 
     if (state->hVideoWnd)
         ShowWindow(state->hVideoWnd, SW_SHOW);
-    if (state->hPlaylist) {
+    if (state->hPlaylist)
         ShowWindow(state->hPlaylist, state->showPlaylist ? SW_SHOW : SW_HIDE);
-        if (state->showPlaylist)
-            SetWindowPos(state->hPlaylist, HWND_TOP, 0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE);
-    }
 
     // Видео всегда видно — центрируем с учётом aspect ratio
     if (state->hVideoWnd) {
@@ -418,11 +414,12 @@ static void UpdateLayout(PluginState* state) {
     }
 
     // Плейлист поверх видео — на всю content area
-    if (state->hPlaylist)
+    if (state->hPlaylist) {
         MoveWindow(state->hPlaylist, 0, tbH, w, contentH, TRUE);
-
-    if (state->showPlaylist && state->hPlaylist)
-        MoveWindow(state->hPlaylist, 0, tbH, w, contentH, TRUE);
+        if (state->showPlaylist)
+            SetWindowPos(state->hPlaylist, HWND_TOP, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE);
+    }
 }
 
 static void UpdateStatus(PluginState* state) {
@@ -824,6 +821,9 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             hWnd, (HMENU)IDC_PLAYLIST, GetModuleHandle(0), NULL);
         ListView_SetExtendedListViewStyle(state->hPlaylist,
             LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+        ListView_SetBkColor(state->hPlaylist, RGB(30, 30, 30));
+        ListView_SetTextBkColor(state->hPlaylist, RGB(30, 30, 30));
+        ListView_SetTextColor(state->hPlaylist, RGB(220, 220, 220));
 
         LVCOLUMN lvc = {0};
         lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
