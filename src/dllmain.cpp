@@ -531,8 +531,10 @@ static void CreateControls(PluginState* state) {
             { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                                    {0}, 0, 0 },
             { I_IMAGENONE, IDM_SEEK_BACK, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23EA" }, // ⏪ Rewind
             { I_IMAGENONE, IDM_SEEK_FWD,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23E9" }, // ⏩ Forward
+            { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                                    {0}, 0, 0 },
+            { I_IMAGENONE, IDM_SHOWPLAYLIST, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u2630" }, // ☰ Playlist
         };
-        SendMessage(state->hToolbar, TB_ADDBUTTONS, 7, (LPARAM)buttons);
+        SendMessage(state->hToolbar, TB_ADDBUTTONS, 9, (LPARAM)buttons);
         SendMessage(state->hToolbar, TB_AUTOSIZE, 0, 0);
     }
 
