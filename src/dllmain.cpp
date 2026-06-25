@@ -360,9 +360,9 @@ static void UpdateLayout(PluginState* state) {
     int contentH = h - tbH - statusH;
     if (contentH < 0) contentH = 0;
 
-    // Видео ВСЕГДА видно
+    // Видео скрыто когда плейлист виден
     if (state->hVideoWnd)
-        ShowWindow(state->hVideoWnd, SW_SHOW);
+        ShowWindow(state->hVideoWnd, state->showPlaylist ? SW_HIDE : SW_SHOW);
     // Плейлист — оверлей, переключается по L
     if (state->hPlaylist)
         ShowWindow(state->hPlaylist, state->showPlaylist ? SW_SHOW : SW_HIDE);
