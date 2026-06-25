@@ -501,11 +501,11 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
         IDM_ALWAYSONTOP, TEXT("Always on Top\tCtrl+T"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
-        IDM_SHOWPLAYLIST, TEXT("Show Playlist\tP"));
+        IDM_SHOWPLAYLIST, TEXT("Show Playlist\tCtrl+P"));
     AppendMenu(hMenu, MF_STRING, IDM_FILEINFO, TEXT("File Info\tI"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_ABOUT, TEXT("About MediaShow2"));
-    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_NONOTIFY, x, y, 0, state->hMainWnd, NULL);
+    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, x, y, 0, state->hMainWnd, NULL);
     DestroyMenu(hMenu);
 }
 
@@ -1027,7 +1027,10 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         case VK_DOWN:  SendMessage(hWnd, WM_COMMAND, IDM_VOL_DOWN,      0); return 0;
         case 'M':      SendMessage(hWnd, WM_COMMAND, IDM_MUTE,          0); return 0;
         case VK_F11:   SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN,    0); return 0;
-        case 'P':      SendMessage(hWnd, WM_COMMAND, IDM_SHOWPLAYLIST,  0); return 0;
+        case 'P':
+            if (GetKeyState(VK_CONTROL) & 0x8000)
+                SendMessage(hWnd, WM_COMMAND, IDM_SHOWPLAYLIST, 0);
+            return 0;
         case 'I':      SendMessage(hWnd, WM_COMMAND, IDM_FILEINFO,      0); return 0;
         case VK_ESCAPE:
             if (state->isFullscreen)
