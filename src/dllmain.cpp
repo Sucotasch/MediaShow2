@@ -405,9 +405,10 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
     DestroyMenu(hMenu);
 }
 
+static LRESULT CALLBACK VolSliderProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
+
 /* -----------------------------------------------------------------------
-   Controls creation (Defect #1 fix: CCS_NORESIZE|CCS_NOPARENTALIGN,
-                       Defect #18: Fluent icon font on toolbar)
+   Controls creation (Defect #1 fix: CCS_NORESIZE|CCS_NOPARENTALIGN)
    ----------------------------------------------------------------------- */
 static void CreateControls(PluginState* state) {
     INITCOMMONCONTROLSEX icex;
@@ -473,6 +474,7 @@ static void CreateControls(PluginState* state) {
     if (state->hVolSlider) {
         SendMessage(state->hVolSlider, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
         SendMessage(state->hVolSlider, TBM_SETPOS,   TRUE, state->volume);
+        SetWindowSubclass(state->hVolSlider, VolSliderProc, 0, (DWORD_PTR)state);
     }
 
     state->hStatus = CreateWindowEx(0, STATUSCLASSNAME, TEXT(""),
@@ -591,6 +593,25 @@ static void PlayIndex(PluginState* state, int idx) {
     UpdateLayout(state);
     UpdateStatus(state);
     UpdateSeekbar(state);
+}
+
+/* -----------------------------------------------------------------------
+   Volume slider subclass — intercept WM_MOUSEWHEEL so trackbar's
+   default horizontal handling (up = left = decrease) doesn't invert it.
+   ----------------------------------------------------------------------- */
+static LRESULT CALLBACK VolSliderProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                      UINT_PTR subclassId, DWORD_PTR refData) {
+    PluginState* state = (PluginState*)refData;
+    if (msg == WM_MOUSEWHEEL && state) {
+        int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+        state->volume = max(0, min(100, state->volume + (delta > 0 ? 5 : -5)));
+        SendMessage(state->hVolSlider, TBM_SETPOS, TRUE, state->volume);
+        ApplyVolume(state);
+        SaveVolume(state);
+        UpdateStatus(state);
+        return 0;
+    }
+    return DefSubclassProc(hWnd, msg, wParam, lParam);
 }
 
 /* -----------------------------------------------------------------------
@@ -738,8 +759,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         if (!state) break;
         // Scroll UP (delta > 0) → volume up; DOWN → volume down
         int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-        TCHAR dbg[128]; _sntprintf(dbg, 128, TEXT("MediaShow2: WM_MOUSEWHEEL delta=%d\n"), delta);
-        OutputDebugString(dbg);
         state->volume = max(0, min(100, state->volume + (delta > 0 ? 5 : -5)));
         ApplyVolume(state);
         SaveVolume(state);
@@ -993,6 +1012,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             MFPlayer_Destroy(state->pMFPlayer);
             DSPlayer_Destroy(state->pDSPlayer);
             RemoveWindowSubclass(state->hVideoWnd, VideoWndProc, 0);
+            RemoveWindowSubclass(state->hVolSlider, VolSliderProc, 0);
             if (state->hFont)     DeleteObject(state->hFont);
             if (state->hIconFont) DeleteObject(state->hIconFont);
             if (state->hBackBrush) DeleteObject(state->hBackBrush);
