@@ -876,6 +876,7 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 /* -----------------------------------------------------------------------
    Tray support
    ----------------------------------------------------------------------- */
+static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 static ATOM popupWndClass = 0;
 
 static void RegisterPopupClass() {
@@ -883,7 +884,7 @@ static void RegisterPopupClass() {
     WNDCLASSEX wc = {0};
     wc.cbSize        = sizeof(WNDCLASSEX);
     wc.style         = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
-    wc.lpfnWndProc   = DefWindowProc;
+    wc.lpfnWndProc   = cbNewMain;
     wc.hInstance     = GetModuleHandle(0);
     wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
@@ -1017,7 +1018,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
         state->pDSPlayer = DSPlayer_Create(state->hVideoWnd, OnMFEnd, state);
 
-        CreateControls(state);
+        // Controls created in ListLoadW (not here)
         return 0;
     }
 
@@ -1500,26 +1501,40 @@ HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
 }
 
 HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
-    RegisterMainWndClass();
-    HWND hWnd = CreateWindowEx(0, TEXT("MediaShow2Main"), APP_NAME,
-        WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
-        0, 0, 100, 100,
-        ParentWin, (HMENU)IDC_MAIN, GetModuleHandle(0), NULL);
+    // 1. Create popup window (main player)
+    RegisterPopupClass();
+    int pw = 640, ph = 480;
+    int sx = (GetSystemMetrics(SM_CXSCREEN) - pw) / 2;
+    int sy = (GetSystemMetrics(SM_CYSCREEN) - ph) / 2;
+
+    HWND hWnd = CreateWindowEx(0, TEXT("MediaShow2Popup"), APP_NAME,
+        WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME,
+        sx, sy, pw, ph,
+        NULL, NULL, GetModuleHandle(0), NULL);
     if (!hWnd) return NULL;
 
     PluginState* state = GetState(hWnd);
     if (!state) { DestroyWindow(hWnd); return NULL; }
 
-    // Defect #7 fix: store ParentWin for correct itm_next routing
-    state->hParentWnd = ParentWin;
+    // 2. Create minimal WS_CHILD placeholder for TC
+    HWND hChild = CreateWindowEx(0, TEXT("MediaShow2Main"), TEXT(""),
+        WS_CHILD, 0, 0, 100, 100,
+        ParentWin, NULL, GetModuleHandle(0), NULL);
+    if (hChild) {
+        SetProp(hChild, TEXT("STATE"), (HANDLE)state);
+        state->hParentWnd = ParentWin;
+    }
 
-    // Defect #8 fix: read dark mode flag from TC
+    state->hMainWnd = hWnd;
+    state->isPopupMode = TRUE;
+
+    // Dark mode
     state->isDarkMode = ((ShowFlags & lcp_darkmode) || (ShowFlags & lcp_darkmodenative)) ? TRUE : FALSE;
     ApplyTheme(state);
 
     _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
 
-    // Get playlist from TC selected files (original MediaShow approach)
+    // Playlist from TC selected files
     TCHAR** selFiles = NULL;
     int selCount = 0;
     GetSelectedFilesFromTC(ParentWin, &selFiles, &selCount);
@@ -1529,6 +1544,9 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         BuildPlaylist(state, ParentWin, FileToLoad);
     }
     state->showPlaylist = IsAudioOnly(FileToLoad);
+
+    // Create controls inside popup
+    CreateControls(state);
 
     SetTimer(hWnd, 1, 500, NULL);
     UpdatePlaylist(state);
@@ -1559,7 +1577,9 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     UpdateStatus(state);
     UpdateSeekbar(state);
     UpdateVolumeSlider(state);
-    return hWnd;
+
+    // Return placeholder to TC (required by WLX API)
+    return hChild ? hChild : hWnd;
 }
 
 int __stdcall ListLoadNext(HWND ParentWin, HWND PluginWin, char* FileToLoad, int ShowFlags) {
