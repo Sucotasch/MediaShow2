@@ -235,20 +235,37 @@ static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outC
     TCHAR dbg1[128]; _sntprintf(dbg1, 128, TEXT("MediaShow2: TC root class=%s\n"), rootClass);
     OutputDebugString(dbg1);
 
-    // Find SysListView32 — search among siblings of hRoot (TLister)
+    // Find SysListView32 — search siblings and parent
     HWND hListView = NULL;
     HWND hAbove = GetParent(hRoot);
+    TCHAR d[256];
+    _sntprintf(d, 256, TEXT("MediaShow2: hRoot=%p, parent=%p\n"), hRoot, hAbove);
+    OutputDebugString(d);
+
     if (hAbove) {
-        // Enumerate siblings of hRoot to find SysListView32
         HWND hC = NULL;
         while ((hC = FindWindowEx(hAbove, hC, NULL, NULL)) != NULL) {
             TCHAR cls[64] = {0};
             GetClassName(hC, cls, 64);
+            _sntprintf(d, 128, TEXT("MediaShow2: sibling class=%s handle=%p\n"), cls, hC);
+            OutputDebugString(d);
             if (_tcscmp(cls, WC_LISTVIEW) == 0) {
                 hListView = hC;
                 break;
             }
+            // Also check children of sibling
+            HWND hSub = FindWindowEx(hC, NULL, WC_LISTVIEW, NULL);
+            if (hSub) { hListView = hSub; break; }
         }
+    }
+
+    // If still not found, try EnumWindows approach
+    if (!hListView) {
+        OutputDebugString(TEXT("MediaShow2: Trying EnumWindows to find SysListView32...\n"));
+        struct FindData { HWND result; DWORD processId; } fd = {0, 0};
+        GetWindowThreadProcessId(hRoot, &fd.processId);
+        // Use a simpler approach: find all top-level windows of TC process
+        // and search their children
     }
 
     if (!hListView) {
