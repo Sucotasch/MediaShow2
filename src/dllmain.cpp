@@ -340,7 +340,7 @@ static void UpdateStatus(PluginState* state) {
 static void UpdateSeekbar(PluginState* state) {
     if (!state || !state->hSeekbar) return;
     int pos = (state->duration > 0) ? (int)(state->position / state->duration * 100) : 0;
-    SendMessage(state->hSeekbar, TBM_SETPOS, TRUE, pos);
+    SendMessage(state->hSeekbar, TBM_SETPOS, FALSE, pos);
 }
 
 static void UpdateVolumeSlider(PluginState* state) {
@@ -711,6 +711,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                     MFPlayer_Seek(state->pMFPlayer, state->position);
             }
             UpdateStatus(state);
+            UpdateSeekbar(state);
         } else if (hCtrl == state->hVolSlider) {
             state->volume = (int)SendMessage(state->hVolSlider, TBM_GETPOS, 0, 0);
             ApplyVolume(state);
@@ -965,10 +966,14 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     /* ---- Timer: position polling ---- */
     case WM_TIMER:
         if (wParam == 1 && state) {
-            double newPos = state->useDirectShow ?
+            if (state->duration <= 0) {
+                state->duration = state->useDirectShow ?
+                    DSPlayer_GetDuration(state->pDSPlayer) :
+                    MFPlayer_GetDuration(state->pMFPlayer);
+            }
+            state->position = state->useDirectShow ?
                 DSPlayer_GetPosition(state->pDSPlayer) :
                 MFPlayer_GetPosition(state->pMFPlayer);
-            if (newPos > 0) state->position = newPos;
             UpdateStatus(state);
             UpdateSeekbar(state);
         }

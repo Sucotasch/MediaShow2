@@ -204,7 +204,7 @@ double MFPlayer_GetDuration(MFPlayer* player) {
         if (pv.vt == VT_I8)  val = pv.hVal.QuadPart;
         else if (pv.vt == VT_UI8) val = (LONGLONG)pv.uhVal.QuadPart;
         PropVariantClear(&pv);
-        if (val > 0) return val / 10000000.0;
+        return val / 10000000.0;
     }
     PropVariantClear(&pv);
     return 0;
@@ -222,7 +222,7 @@ double MFPlayer_GetPosition(MFPlayer* player) {
         if (pv.vt == VT_I8)  val = pv.hVal.QuadPart;
         else if (pv.vt == VT_UI8) val = (LONGLONG)pv.uhVal.QuadPart;
         PropVariantClear(&pv);
-        if (val > 0) return val / 10000000.0;
+        return val / 10000000.0;
     }
     PropVariantClear(&pv);
     return 0;
