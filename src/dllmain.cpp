@@ -207,24 +207,48 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outD
 static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outCount) {
     *outFiles = NULL; *outCount = 0;
     HWND hTC = GetAncestor(hListerWnd, GA_ROOT);
-    if (!hTC) { OutputDebugString(TEXT("MediaShow2: GetSelectedFiles - no TC window\n")); return; }
+    if (!hTC) {
+        OutputDebugString(TEXT("MediaShow2: GetSelectedFiles - GetAncestor returned NULL\n"));
+        return;
+    }
 
-    TCHAR className[64] = {0};
-    HWND hChild = NULL;
-    HWND hListView = NULL;
-    // Enumerate children to find SysListView32
-    while ((hChild = FindWindowEx(hTC, hChild, NULL, NULL)) != NULL) {
-        GetClassName(hChild, className, 64);
-        TCHAR dbg[128]; _sntprintf(dbg, 128, TEXT("MediaShow2: child class=%s\n"), className);
-        OutputDebugString(dbg);
-        if (_tcscmp(className, WC_LISTVIEW) == 0) {
-            hListView = hChild;
-            break;
+    TCHAR tcClass[64] = {0};
+    GetClassName(hTC, tcClass, 64);
+    TCHAR dbg1[128]; _sntprintf(dbg1, 128, TEXT("MediaShow2: TC window class=%s handle=%p\n"), tcClass, hTC);
+    OutputDebugString(dbg1);
+
+    // Try direct FindWindowEx first
+    HWND hListView = FindWindowEx(hTC, NULL, WC_LISTVIEW, NULL);
+    if (!hListView) {
+        // Enumerate all children recursively
+        HWND hChild = NULL;
+        while ((hChild = FindWindowEx(hTC, hChild, NULL, NULL)) != NULL) {
+            TCHAR className[64] = {0};
+            GetClassName(hChild, className, 64);
+            TCHAR dbg[128]; _sntprintf(dbg, 128, TEXT("MediaShow2: child class=%s handle=%p\n"), className, hChild);
+            OutputDebugString(dbg);
+            if (_tcscmp(className, WC_LISTVIEW) == 0) {
+                hListView = hChild;
+                break;
+            }
+            // Try children of this child
+            HWND hGrandchild = NULL;
+            while ((hGrandchild = FindWindowEx(hChild, hGrandchild, NULL, NULL)) != NULL) {
+                TCHAR gcClass[64] = {0};
+                GetClassName(hGrandchild, gcClass, 64);
+                TCHAR dbg2[128]; _sntprintf(dbg2, 128, TEXT("MediaShow2: grandchild class=%s handle=%p\n"), gcClass, hGrandchild);
+                OutputDebugString(dbg2);
+                if (_tcscmp(gcClass, WC_LISTVIEW) == 0) {
+                    hListView = hGrandchild;
+                    break;
+                }
+            }
+            if (hListView) break;
         }
     }
 
     if (!hListView) {
-        OutputDebugString(TEXT("MediaShow2: GetSelectedFiles - no ListView found\n"));
+        OutputDebugString(TEXT("MediaShow2: GetSelectedFiles - SysListView32 NOT FOUND anywhere\n"));
         return;
     }
 
