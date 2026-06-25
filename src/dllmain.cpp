@@ -227,26 +227,28 @@ static BOOL CALLBACK EnumFindListView(HWND hWnd, LPARAM lParam) {
 static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outCount) {
     *outFiles = NULL; *outCount = 0;
 
-    // Find TC's top-level window
     HWND hRoot = hListerWnd;
     while (GetParent(hRoot)) hRoot = GetParent(hRoot);
 
     DWORD tcPid = 0;
     GetWindowThreadProcessId(hRoot, &tcPid);
-    if (!tcPid) return;
+    if (!tcPid) { OutputDebugString(TEXT("MediaShow2: no TC pid\n")); return; }
 
-    // Find SysListView32 among ALL TC windows
     EnumFindData fd = {0, tcPid};
     EnumWindows(EnumFindListView, (LPARAM)&fd);
     HWND hListView = fd.result;
 
-    if (!hListView) return;
+    if (!hListView) { OutputDebugString(TEXT("MediaShow2: SysListView32 NOT FOUND\n")); return; }
 
     int count = (int)SendMessage(hListView, LVM_GETSELECTEDCOUNT, 0, 0);
+    TCHAR dbg[64]; _sntprintf(dbg, 64, TEXT("MediaShow2: selected count=%d\n"), count);
+    OutputDebugString(dbg);
     if (count == 0) return;
 
     TCHAR dir[MAX_PATH] = {0};
     GetWindowText(hRoot, dir, MAX_PATH);
+    TCHAR dbg2[256]; _sntprintf(dbg2, 256, TEXT("MediaShow2: TC dir=%s\n"), dir);
+    OutputDebugString(dbg2);
 
     TCHAR** files = (TCHAR**)calloc(count, sizeof(TCHAR*));
     if (!files) return;
