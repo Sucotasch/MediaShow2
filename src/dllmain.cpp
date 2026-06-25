@@ -48,7 +48,7 @@ struct PluginState {
     BOOL  isFullscreen;
     BOOL  isAlwaysOnTop;
     BOOL  isDarkMode;
-    BOOL  clickPending;
+    DWORD lastClickTime;
     double duration;
     double position;
     double videoAr;          // native video aspect ratio (0 = unknown)
@@ -715,6 +715,7 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                                      UINT_PTR subclassId, DWORD_PTR refData) {
     PluginState* state = (PluginState*)refData;
     switch (msg) {
+    // Defect #10: paint letterbox background black
     case WM_ERASEBKGND: {
         HDC hdc = (HDC)wParam;
         RECT rc; GetClientRect(hWnd, &rc);
@@ -732,35 +733,20 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         }
         break;
     }
-    case WM_LBUTTONDOWN: {
-        if (!state) break;
-        if (state->clickPending) {
-            KillTimer(state->hVideoWnd, IDC_CLICK_TIMER);
-            state->clickPending = FALSE;
-            SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
-        } else {
-            state->clickPending = TRUE;
-            SetTimer(state->hVideoWnd, IDC_CLICK_TIMER, GetDoubleClickTime(), NULL);
-        }
-        return 0;
-    }
-    case WM_TIMER: {
-        if (!state) break;
-        if (wParam == IDC_CLICK_TIMER && state->clickPending) {
-            KillTimer(state->hVideoWnd, IDC_CLICK_TIMER);
-            state->clickPending = FALSE;
-            SendMessage(state->hMainWnd, WM_COMMAND, IDM_PLAY, 0);
-        }
-        return 0;
-    }
     case WM_KEYDOWN:
         if (state)
             SendMessage(state->hMainWnd, msg, wParam, lParam);
         return 0;
+    case WM_LBUTTONDOWN:
+        if (state)
+            SendMessage(state->hMainWnd, msg, wParam, lParam);
+        return 0;
+    // Defect #14 fix: double-click triggers fullscreen toggle
     case WM_LBUTTONDBLCLK:
         if (state)
             SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
         return 0;
+
     case WM_RBUTTONUP:
     case WM_CONTEXTMENU:
         if (state) {
@@ -775,6 +761,8 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             ShowContextMenu(state, x, y);
         }
         return 0;
+    // Defect #3 fix: WM_MOUSEWHEEL removed from video window.
+    // Volume-only wheel is handled in cbNewMain.
     }
     return DefSubclassProc(hWnd, msg, wParam, lParam);
 }
@@ -897,20 +885,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         return 0;
     }
 
-    /* ---- Mouse click on video: pause / double-click: fullscreen ---- */
-    case WM_LBUTTONDOWN: {
-        if (!state || state->showPlaylist) break;
-        if (state->clickPending) {
-            KillTimer(hWnd, IDC_CLICK_TIMER);
-            state->clickPending = FALSE;
-            SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
-        } else {
-            state->clickPending = TRUE;
-            SetTimer(hWnd, IDC_CLICK_TIMER, 650, NULL);
-        }
-        return 0;
-    }
-
     /* ---- Context menu ---- */
     case WM_CONTEXTMENU:
         if (state) ShowContextMenu(state, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
@@ -925,6 +899,19 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 SetFocus(state->hVideoWnd);
         }
         return 0;
+
+    /* ---- Mouse click on video: double-click for fullscreen ---- */
+    case WM_LBUTTONDOWN: {
+        if (!state || state->showPlaylist) break;
+        DWORD now = GetTickCount();
+        if (state->lastClickTime && (now - state->lastClickTime <= 650)) {
+            state->lastClickTime = 0;
+            SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+        } else {
+            state->lastClickTime = now;
+        }
+        return 0;
+    }
 
     /* ---- Playlist notifications (Defect #11 fix) ---- */
     case WM_NOTIFY: {
@@ -1177,13 +1164,9 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         return 0;
     }
 
-    /* ---- Timer: position polling + click detection ---- */
+    /* ---- Timer: position polling ---- */
     case WM_TIMER:
-        if (wParam == IDC_CLICK_TIMER && state && state->clickPending) {
-            KillTimer(hWnd, IDC_CLICK_TIMER);
-            state->clickPending = FALSE;
-            SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
-        } else if (wParam == 1 && state) {
+        if (wParam == 1 && state) {
             if (state->duration <= 0) {
                 state->duration = state->useDirectShow ?
                     DSPlayer_GetDuration(state->pDSPlayer) :
