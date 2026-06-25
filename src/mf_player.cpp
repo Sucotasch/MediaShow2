@@ -93,7 +93,6 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
     hr = p->pPlayer->QueryInterface(IID_IMFVideoDisplayControl, (void**)&p->pVideoCtrl);
     if (SUCCEEDED(hr)) {
         p->pVideoCtrl->SetVideoWindow(p->hVideoWnd);
-        p->pVideoCtrl->SetAspectRatioMode(MFVideoARMode_PreservePicture);
         RECT rc;
         GetClientRect(p->hVideoWnd, &rc);
         p->pVideoCtrl->SetVideoPosition(NULL, &rc);
@@ -256,5 +255,28 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
         return;
     }
 
-    p->pVideoCtrl->SetVideoPosition(NULL, &wrc);
+    int cw = wrc.right  - wrc.left;
+    int ch = wrc.bottom - wrc.top;
+    if (cw <= 0 || ch <= 0) return;
+
+    int vx = 0, vy = 0, vw = cw, vh = ch;
+
+    SIZE nativeSize = {0};
+    if (SUCCEEDED(p->pVideoCtrl->GetNativeVideoSize(&nativeSize, NULL)) &&
+        nativeSize.cx > 0 && nativeSize.cy > 0) {
+        double srcAr = (double)nativeSize.cx / (double)nativeSize.cy;
+        double dstAr = (double)cw / (double)ch;
+        if (srcAr > dstAr) {
+            vw = cw;
+            vh = (int)((double)cw / srcAr);
+            vy = (ch - vh) / 2;
+        } else {
+            vh = ch;
+            vw = (int)((double)ch * srcAr);
+            vx = (cw - vw) / 2;
+        }
+    }
+
+    RECT dst = { vx, vy, vx + vw, vy + vh };
+    p->pVideoCtrl->SetVideoPosition(NULL, &dst);
 }
