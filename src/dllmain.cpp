@@ -200,6 +200,60 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outD
     *outCount = count;
 }
 
+/* -----------------------------------------------------------------------
+   Get selected files from TC panel (FindWindowEx + LVM messages)
+   Original MediaShow uses this exact pattern.
+   ----------------------------------------------------------------------- */
+static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outCount) {
+    *outFiles = NULL; *outCount = 0;
+    HWND hTC = GetAncestor(hListerWnd, GA_ROOT);
+    if (!hTC) return;
+    HWND hListView = FindWindowEx(hTC, NULL, WC_LISTVIEW, NULL);
+    if (!hListView) return;
+
+    int count = (int)SendMessage(hListView, LVM_GETSELECTEDCOUNT, 0, 0);
+    if (count == 0) return;
+
+    TCHAR dir[MAX_PATH] = {0};
+    GetWindowText(hTC, dir, MAX_PATH);
+
+    TCHAR** files = (TCHAR**)calloc(count, sizeof(TCHAR*));
+    if (!files) return;
+
+    int idx = -1;
+    for (int i = 0; i < count; i++) {
+        idx = (int)SendMessage(hListView, LVM_GETNEXTITEM, idx, LVNI_SELECTED);
+        if (idx < 0) break;
+        TCHAR name[MAX_PATH] = {0};
+        LVITEM lvi = {0};
+        lvi.mask = LVIF_TEXT;
+        lvi.iItem = idx;
+        lvi.iSubItem = 0;
+        lvi.pszText = name;
+        lvi.cchTextMax = MAX_PATH;
+        SendMessage(hListView, LVM_GETITEMTEXT, idx, (LPARAM)&lvi);
+        TCHAR fullPath[MAX_PATH];
+        _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, name);
+        files[i] = _tcsdup(fullPath);
+    }
+    *outFiles = files;
+    *outCount = count;
+}
+
+static void BuildPlaylistFromSelection(PluginState* state, TCHAR** selFiles, int selCount, TCHAR* currentFile) {
+    FreePlaylist(state);
+    state->playlist      = selFiles;
+    state->playlistCount = selCount;
+    state->playlistIndex = 0;
+    state->fileDates     = (FILETIME*)calloc(selCount, sizeof(FILETIME));
+    for (int i = 0; i < selCount; i++) {
+        if (_tcsicmp(selFiles[i], currentFile) == 0) {
+            state->playlistIndex = i;
+            break;
+        }
+    }
+}
+
 static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* currentFile) {
     FreePlaylist(state);
 
@@ -1279,7 +1333,16 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     ApplyTheme(state);
 
     _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
-    BuildPlaylist(state, ParentWin, FileToLoad);
+
+    // Get playlist from TC selected files (original MediaShow approach)
+    TCHAR** selFiles = NULL;
+    int selCount = 0;
+    GetSelectedFilesFromTC(ParentWin, &selFiles, &selCount);
+    if (selFiles && selCount > 0) {
+        BuildPlaylistFromSelection(state, selFiles, selCount, FileToLoad);
+    } else {
+        BuildPlaylist(state, ParentWin, FileToLoad);
+    }
     state->showPlaylist = IsAudioOnly(FileToLoad);
 
     SetTimer(hWnd, 1, 500, NULL);
