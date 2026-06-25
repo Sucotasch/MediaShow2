@@ -443,15 +443,15 @@ static void CreateControls(PluginState* state) {
         if (state->hIconFont)
             SendMessage(state->hToolbar, WM_SETFONT, (WPARAM)state->hIconFont, FALSE);
 
-        // Segoe MDL2 Assets glyph codepoints
+        // Segoe Fluent Icons / MDL2 Assets glyph codepoints
         TBBUTTON buttons[] = {
-            { I_IMAGENONE, IDM_PREV,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uE892" }, // Prev
-            { I_IMAGENONE, IDM_PLAY,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uE768" }, // Play
-            { I_IMAGENONE, IDM_STOP,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uE71A" }, // Stop
-            { I_IMAGENONE, IDM_NEXT,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uE893" }, // Next
-            { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                    {0}, 0, 0 },
-            { I_IMAGENONE, IDM_SEEK_BACK, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uEB9E" }, // Rewind 10s
-            { I_IMAGENONE, IDM_SEEK_FWD,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE, {0}, 0, (INT_PTR)L"\uEB9F" }, // Forward 10s
+            { I_IMAGENONE, IDM_PREV,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uE892" }, // Prev
+            { I_IMAGENONE, IDM_PLAY,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uE768" }, // Play
+            { I_IMAGENONE, IDM_STOP,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uE71A" }, // Stop
+            { I_IMAGENONE, IDM_NEXT,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uE893" }, // Next
+            { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                                    {0}, 0, 0 },
+            { I_IMAGENONE, IDM_SEEK_BACK, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uEB9E" }, // Rewind 10s
+            { I_IMAGENONE, IDM_SEEK_FWD,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uEB9F" }, // Forward 10s
         };
         SendMessage(state->hToolbar, TB_ADDBUTTONS, 7, (LPARAM)buttons);
         SendMessage(state->hToolbar, TB_AUTOSIZE, 0, 0);
@@ -738,7 +738,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         if (!state) break;
         // Scroll UP (delta > 0) → volume up; DOWN → volume down
         int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-        state->volume = max(0, min(100, state->volume + (delta > 0 ? 5 : -5)));
+        state->volume = max(0, min(100, state->volume + (delta > 0 ? -5 : 5)));
         ApplyVolume(state);
         SaveVolume(state);
         UpdateVolumeSlider(state);
