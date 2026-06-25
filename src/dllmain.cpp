@@ -415,18 +415,18 @@ static void CreateControls(PluginState* state) {
     icex.dwICC  = ICC_BAR_CLASSES | ICC_WIN95_CLASSES | ICC_STANDARD_CLASSES;
     InitCommonControlsEx(&icex);
 
-    // Defect #18: create icon font from Segoe Fluent Icons (Win11) or MDL2 Assets (Win10)
+    // Segoe UI Symbol (Vista+) → Segoe UI fallback: guaranteed Unicode media glyphs
     state->hIconFont = CreateFont(
-        -18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        -16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
-        TEXT("Segoe Fluent Icons"));
+        TEXT("Segoe UI Symbol"));
     if (!state->hIconFont)
         state->hIconFont = CreateFont(
-            -18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            -16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
-            TEXT("Segoe MDL2 Assets"));
+            TEXT("Segoe UI"));
 
     // Defect #1 fix: CCS_NORESIZE | CCS_NOPARENTALIGN prevent toolbar from
     // auto-stretching to parent width and covering the trackbars.
@@ -443,15 +443,15 @@ static void CreateControls(PluginState* state) {
         if (state->hIconFont)
             SendMessage(state->hToolbar, WM_SETFONT, (WPARAM)state->hIconFont, FALSE);
 
-        // Segoe Fluent Icons / MDL2 Assets glyph codepoints
+        // Unicode media symbols (Segoe UI Symbol)
         TBBUTTON buttons[] = {
-            { I_IMAGENONE, IDM_PREV,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uE892" }, // Prev
-            { I_IMAGENONE, IDM_PLAY,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uE768" }, // Play
-            { I_IMAGENONE, IDM_STOP,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uE71A" }, // Stop
-            { I_IMAGENONE, IDM_NEXT,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uE893" }, // Next
+            { I_IMAGENONE, IDM_PREV,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23EE" }, // ⏮ Prev
+            { I_IMAGENONE, IDM_PLAY,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u25B6" }, // ▶ Play
+            { I_IMAGENONE, IDM_STOP,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u25A0" }, // ■ Stop
+            { I_IMAGENONE, IDM_NEXT,      TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23ED" }, // ⏭ Next
             { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                                    {0}, 0, 0 },
-            { I_IMAGENONE, IDM_SEEK_BACK, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uEB9E" }, // Rewind 10s
-            { I_IMAGENONE, IDM_SEEK_FWD,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\uEB9F" }, // Forward 10s
+            { I_IMAGENONE, IDM_SEEK_BACK, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23EA" }, // ⏪ Rewind
+            { I_IMAGENONE, IDM_SEEK_FWD,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23E9" }, // ⏩ Forward
         };
         SendMessage(state->hToolbar, TB_ADDBUTTONS, 7, (LPARAM)buttons);
         SendMessage(state->hToolbar, TB_AUTOSIZE, 0, 0);
@@ -738,7 +738,9 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         if (!state) break;
         // Scroll UP (delta > 0) → volume up; DOWN → volume down
         int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-        state->volume = max(0, min(100, state->volume + (delta > 0 ? -5 : 5)));
+        TCHAR dbg[128]; _sntprintf(dbg, 128, TEXT("MediaShow2: WM_MOUSEWHEEL delta=%d\n"), delta);
+        OutputDebugString(dbg);
+        state->volume = max(0, min(100, state->volume + (delta > 0 ? 5 : -5)));
         ApplyVolume(state);
         SaveVolume(state);
         UpdateVolumeSlider(state);
