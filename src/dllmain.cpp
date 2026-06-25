@@ -201,87 +201,52 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outD
 }
 
 /* -----------------------------------------------------------------------
-   Get selected files from TC panel (FindWindowEx + LVM messages)
-   Original MediaShow uses this exact pattern.
+   Get selected files from TC panel — EnumWindows approach
+   Searches ALL windows belonging to TC process for SysListView32.
    ----------------------------------------------------------------------- */
+struct EnumFindData { HWND result; DWORD processId; };
+
+static BOOL CALLBACK EnumFindListView(HWND hWnd, LPARAM lParam) {
+    EnumFindData* pfd = (EnumFindData*)lParam;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hWnd, &pid);
+    if (pid != pfd->processId) return TRUE;
+
+    TCHAR cls[64] = {0};
+    GetClassName(hWnd, cls, 64);
+    if (_tcscmp(cls, WC_LISTVIEW) == 0) {
+        int count = (int)SendMessage(hWnd, LVM_GETITEMCOUNT, 0, 0);
+        if (count > 0) {
+            pfd->result = hWnd;
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
 static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outCount) {
     *outFiles = NULL; *outCount = 0;
 
-    // Walk up from ParentWin to find TC's main window (skip our own windows)
-    HWND hWnd = hListerWnd;
-    HWND hRoot = NULL;
+    // Find TC's top-level window
+    HWND hRoot = hListerWnd;
+    while (GetParent(hRoot)) hRoot = GetParent(hRoot);
 
-    while (hWnd) {
-        HWND hParent = GetParent(hWnd);
-        if (!hParent) { hRoot = hWnd; break; }
-        TCHAR cls[64] = {0};
-        GetClassName(hWnd, cls, 64);
-        // Skip our own windows
-        if (_tcscmp(cls, TEXT("MediaShow2Main")) == 0 ||
-            _tcscmp(cls, TEXT("MediaShow2Popup")) == 0) {
-            hWnd = hParent;
-            continue;
-        }
-        hWnd = hParent;
-    }
+    DWORD tcPid = 0;
+    GetWindowThreadProcessId(hRoot, &tcPid);
+    if (!tcPid) return;
 
-    if (!hRoot) {
-        OutputDebugString(TEXT("MediaShow2: GetSelectedFiles - no root window found\n"));
-        return;
-    }
+    // Find SysListView32 among ALL TC windows
+    EnumFindData fd = {0, tcPid};
+    EnumWindows(EnumFindListView, (LPARAM)&fd);
+    HWND hListView = fd.result;
 
-    TCHAR rootClass[64] = {0};
-    GetClassName(hRoot, rootClass, 64);
-    TCHAR dbg1[128]; _sntprintf(dbg1, 128, TEXT("MediaShow2: TC root class=%s\n"), rootClass);
-    OutputDebugString(dbg1);
-
-    // Find SysListView32 — search siblings and parent
-    HWND hListView = NULL;
-    HWND hAbove = GetParent(hRoot);
-    TCHAR d[256];
-    _sntprintf(d, 256, TEXT("MediaShow2: hRoot=%p, parent=%p\n"), hRoot, hAbove);
-    OutputDebugString(d);
-
-    if (hAbove) {
-        HWND hC = NULL;
-        while ((hC = FindWindowEx(hAbove, hC, NULL, NULL)) != NULL) {
-            TCHAR cls[64] = {0};
-            GetClassName(hC, cls, 64);
-            _sntprintf(d, 128, TEXT("MediaShow2: sibling class=%s handle=%p\n"), cls, hC);
-            OutputDebugString(d);
-            if (_tcscmp(cls, WC_LISTVIEW) == 0) {
-                hListView = hC;
-                break;
-            }
-            // Also check children of sibling
-            HWND hSub = FindWindowEx(hC, NULL, WC_LISTVIEW, NULL);
-            if (hSub) { hListView = hSub; break; }
-        }
-    }
-
-    // If still not found, try EnumWindows approach
-    if (!hListView) {
-        OutputDebugString(TEXT("MediaShow2: Trying EnumWindows to find SysListView32...\n"));
-        struct FindData { HWND result; DWORD processId; } fd = {0, 0};
-        GetWindowThreadProcessId(hRoot, &fd.processId);
-        // Use a simpler approach: find all top-level windows of TC process
-        // and search their children
-    }
-
-    if (!hListView) {
-        OutputDebugString(TEXT("MediaShow2: SysListView32 NOT FOUND\n"));
-        return;
-    }
+    if (!hListView) return;
 
     int count = (int)SendMessage(hListView, LVM_GETSELECTEDCOUNT, 0, 0);
-    TCHAR dbg[64]; _sntprintf(dbg, 64, TEXT("MediaShow2: selected count=%d\n"), count);
-    OutputDebugString(dbg);
     if (count == 0) return;
 
     TCHAR dir[MAX_PATH] = {0};
     GetWindowText(hRoot, dir, MAX_PATH);
-    TCHAR dbg2[256]; _sntprintf(dbg2, 256, TEXT("MediaShow2: TC dir=%s\n"), dir);
-    OutputDebugString(dbg2);
 
     TCHAR** files = (TCHAR**)calloc(count, sizeof(TCHAR*));
     if (!files) return;
