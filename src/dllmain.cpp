@@ -736,6 +736,10 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         if (state)
             SendMessage(state->hMainWnd, msg, wParam, lParam);
         return 0;
+    case WM_LBUTTONDOWN:
+        if (state)
+            SendMessage(state->hMainWnd, msg, wParam, lParam);
+        return 0;
     case WM_LBUTTONDBLCLK:
         if (state)
             SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
@@ -877,28 +881,22 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     }
 
     /* ---- Mouse click on video: pause / double-click: fullscreen ---- */
-    case WM_PARENTNOTIFY: {
+    case WM_LBUTTONDOWN: {
         if (!state || state->showPlaylist) break;
-        if (LOWORD(wParam) == WM_LBUTTONDOWN) {
-            int cx = GET_X_LPARAM(lParam);
-            int cy = GET_Y_LPARAM(lParam);
-            // Проверяем, что клик в области видео
-            if (state->hVideoWnd && IsWindowVisible(state->hVideoWnd)) {
-                RECT vrc;
-                GetWindowRect(state->hVideoWnd, &vrc);
-                MapWindowPoints(HWND_DESKTOP, hWnd, (LPPOINT)&vrc, 2);
-                if (cx >= vrc.left && cx <= vrc.right && cy >= vrc.top && cy <= vrc.bottom) {
-                    DWORD now = GetTickCount();
-                    if (state->lastClickTime && (now - state->lastClickTime <= 800)) {
-                        state->lastClickTime = 0;
-                        SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
-                        if (state->isPaused) SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
-                    } else {
-                        state->lastClickTime = now;
-                        SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
-                    }
-                }
-            }
+        DWORD now = GetTickCount();
+        DWORD diff = now - state->lastClickTime;
+        TCHAR dbg[128]; _sntprintf(dbg, 128, TEXT("MediaShow2: click diff=%lu last=%lu now=%lu\n"),
+            diff, state->lastClickTime, now);
+        OutputDebugString(dbg);
+        if (state->lastClickTime && diff <= 1000) {
+            state->lastClickTime = 0;
+            OutputDebugString(TEXT("MediaShow2: DOUBLE CLICK\n"));
+            SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+            if (state->isPaused) SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
+        } else {
+            state->lastClickTime = now;
+            OutputDebugString(TEXT("MediaShow2: SINGLE CLICK\n"));
+            SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
         }
         return 0;
     }
