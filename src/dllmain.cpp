@@ -897,6 +897,20 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         return 0;
     }
 
+    /* ---- Mouse click on video: pause / double-click: fullscreen ---- */
+    case WM_LBUTTONDOWN: {
+        if (!state || state->showPlaylist) break;
+        if (state->clickPending) {
+            KillTimer(hWnd, IDC_CLICK_TIMER);
+            state->clickPending = FALSE;
+            SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+        } else {
+            state->clickPending = TRUE;
+            SetTimer(hWnd, IDC_CLICK_TIMER, GetDoubleClickTime(), NULL);
+        }
+        return 0;
+    }
+
     /* ---- Context menu ---- */
     case WM_CONTEXTMENU:
         if (state) ShowContextMenu(state, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
@@ -1163,9 +1177,13 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         return 0;
     }
 
-    /* ---- Timer: position polling ---- */
+    /* ---- Timer: position polling + click detection ---- */
     case WM_TIMER:
-        if (wParam == 1 && state) {
+        if (wParam == IDC_CLICK_TIMER && state && state->clickPending) {
+            KillTimer(hWnd, IDC_CLICK_TIMER);
+            state->clickPending = FALSE;
+            SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
+        } else if (wParam == 1 && state) {
             if (state->duration <= 0) {
                 state->duration = state->useDirectShow ?
                     DSPlayer_GetDuration(state->pDSPlayer) :
