@@ -328,6 +328,9 @@ static void UpdateLayout(PluginState* state) {
 
         MoveWindow(state->hVideoWnd, vx, tbH + vy, vw, vh, TRUE);
     }
+
+    if (state->showPlaylist && state->hPlaylist)
+        MoveWindow(state->hPlaylist, 0, tbH, w, contentH, TRUE);
 }
 
 static void UpdateStatus(PluginState* state) {
@@ -665,6 +668,10 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         }
         break;
     }
+    case WM_KEYDOWN:
+        if (state)
+            SendMessage(state->hMainWnd, msg, wParam, lParam);
+        return 0;
     // Defect #14 fix: double-click triggers fullscreen toggle
     case WM_LBUTTONDBLCLK:
         if (state)
