@@ -853,7 +853,7 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 
 /* -----------------------------------------------------------------------
-   Popup window (independent player)
+   Tray support
    ----------------------------------------------------------------------- */
 static ATOM popupWndClass = 0;
 
@@ -907,7 +907,7 @@ static void ShowTrayIcon(PluginState* state) {
     if (state->inTray) return;
     static NOTIFYICONDATA nid = {0};
     nid.cbSize = sizeof(nid);
-    nid.hWnd = state->hPopupWnd ? state->hPopupWnd : state->hMainWnd;
+    nid.hWnd = state->hMainWnd;
     nid.uID = 1;
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAYICON;
@@ -921,7 +921,7 @@ static void RemoveTrayIcon(PluginState* state) {
     if (!state->inTray) return;
     static NOTIFYICONDATA nid = {0};
     nid.cbSize = sizeof(nid);
-    nid.hWnd = state->hPopupWnd ? state->hPopupWnd : state->hMainWnd;
+    nid.hWnd = state->hMainWnd;
     nid.uID = 1;
     Shell_NotifyIcon(NIM_DELETE, &nid);
     state->inTray = FALSE;
@@ -942,9 +942,8 @@ static void ShowTrayMenu(PluginState* state) {
 
     POINT pt;
     GetCursorPos(&pt);
-    HWND hWnd = state->hPopupWnd ? state->hPopupWnd : state->hMainWnd;
-    SetForegroundWindow(hWnd);
-    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hWnd, NULL);
+    SetForegroundWindow(state->hMainWnd);
+    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, state->hMainWnd, NULL);
     DestroyMenu(hMenu);
 }
 
@@ -1310,17 +1309,35 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             ToggleFullscreen(state);
             break;
 
-        case IDM_POPOUT:
-            CreatePopupWindow(state);
+        case IDM_POPOUT: {
+            // Switch from WS_CHILD to WS_POPUP — keep all controls
+            DWORD style = (DWORD)GetWindowLong(hWnd, GWL_STYLE);
+            DWORD exStyle = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
+
+            // Remove child style, add popup styles
+            style &= ~WS_CHILD;
+            style |= WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME;
+            SetWindowLong(hWnd, GWL_STYLE, style);
+
+            // Reparent to desktop
+            SetParent(hWnd, NULL);
+
+            // Resize and center
+            int pw = 500, ph = 400;
+            int sx = (GetSystemMetrics(SM_CXSCREEN) - pw) / 2;
+            int sy = (GetSystemMetrics(SM_CYSCREEN) - ph) / 2;
+            SetWindowPos(hWnd, NULL, sx, sy, pw, ph, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+            state->isPopupMode = TRUE;
+            UpdateLayout(state);
             break;
+        }
 
         case IDM_ALWAYSONTOP:
-            if (state->hPopupWnd) {
-                state->popupHasTopmost = !state->popupHasTopmost;
-                SetWindowPos(state->hPopupWnd,
-                    state->popupHasTopmost ? HWND_TOPMOST : HWND_NOTOPMOST,
-                    0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            }
+            state->popupHasTopmost = !state->popupHasTopmost;
+            SetWindowPos(hWnd,
+                state->popupHasTopmost ? HWND_TOPMOST : HWND_NOTOPMOST,
+                0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
             break;
 
         case IDM_TRAY_PLAY:
@@ -1336,11 +1353,9 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             SendMessage(hWnd, WM_COMMAND, IDM_NEXT, 0);
             break;
         case IDM_TRAY_SHOW:
-            if (state->hPopupWnd) {
-                ShowWindow(state->hPopupWnd, SW_SHOW);
-                SetForegroundWindow(state->hPopupWnd);
-                RemoveTrayIcon(state);
-            }
+            ShowWindow(hWnd, SW_SHOW);
+            SetForegroundWindow(hWnd);
+            RemoveTrayIcon(state);
             break;
         case IDM_TRAY_EXIT:
             RemoveTrayIcon(state);
@@ -1584,7 +1599,7 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 void __stdcall ListCloseWindow(HWND ListWin) {
     PluginState* state = GetState(ListWin);
     if (state) {
-        if (state->hPopupWnd && state->isPlaying) {
+        if (state->isPopupMode && state->isPlaying) {
             // Popup lives independently — just hide the placeholder
             ShowWindow(ListWin, SW_HIDE);
             return;
