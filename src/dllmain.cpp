@@ -30,7 +30,6 @@ static ATOM  fullscreenWndClass = 0;
 struct PluginState {
     HWND hMainWnd;
     HWND hParentWnd;        // TC lister window (for itm_next)
-    HWND hPopupWnd;         // independent popup window (F3 mode)
     HWND hVideoWnd;
     HWND hPlaylist;
     HWND hToolbar;
@@ -41,7 +40,6 @@ struct PluginState {
     MFPlayer* pMFPlayer;
     DSPlayer* pDSPlayer;
     BOOL  useDirectShow;
-    BOOL  isPopupMode;      // TRUE = popup (F3), FALSE = child (Ctrl+Q)
     TCHAR filePath[MAX_PATH];
     BOOL  isPlaying;
     BOOL  isPaused;
@@ -49,8 +47,6 @@ struct PluginState {
     BOOL  showPlaylist;
     BOOL  isFullscreen;
     BOOL  isDarkMode;
-    BOOL  popupHasTopmost;  // always on top for popup
-    BOOL  inTray;           // TRUE = player in tray
     DWORD lastClickTime;
     double duration;
     double position;
@@ -577,7 +573,6 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_FULLSCREEN,
         state->isFullscreen ? TEXT("Exit Fullscreen\tF11") : TEXT("Fullscreen\tF11"));
-    AppendMenu(hMenu, MF_STRING, IDM_POPOUT, TEXT("Independent Player"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
         IDM_SHOWPLAYLIST, TEXT("Show/Hide Playlist\tL"));
@@ -638,10 +633,8 @@ static void CreateControls(PluginState* state) {
             { I_IMAGENONE, IDM_SEEK_FWD,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23E9" }, // ⏩ Forward
             { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                                    {0}, 0, 0 },
             { I_IMAGENONE, IDM_SHOWPLAYLIST, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u2630" }, // ☰ Playlist
-            { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                                    {0}, 0, 0 },
-            { I_IMAGENONE, IDM_POPOUT,    TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u2B1A" }, // ◪ Independent Player
         };
-        SendMessage(state->hToolbar, TB_ADDBUTTONS, 11, (LPARAM)buttons);
+        SendMessage(state->hToolbar, TB_ADDBUTTONS, 9, (LPARAM)buttons);
         SendMessage(state->hToolbar, TB_AUTOSIZE, 0, 0);
     }
 
@@ -874,102 +867,6 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 
 /* -----------------------------------------------------------------------
-   Tray support
-   ----------------------------------------------------------------------- */
-static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-static ATOM popupWndClass = 0;
-
-static void RegisterPopupClass() {
-    if (popupWndClass) return;
-    WNDCLASSEX wc = {0};
-    wc.cbSize        = sizeof(WNDCLASSEX);
-    wc.style         = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
-    wc.lpfnWndProc   = cbNewMain;
-    wc.hInstance     = GetModuleHandle(0);
-    wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    wc.lpszClassName = TEXT("MediaShow2Popup");
-    popupWndClass = RegisterClassEx(&wc);
-}
-
-static void CreatePopupWindow(PluginState* state) {
-    if (state->hPopupWnd) return;
-    RegisterPopupClass();
-
-    int pw = 500, ph = 400;
-    int sx = (GetSystemMetrics(SM_CXSCREEN) - pw) / 2;
-    int sy = (GetSystemMetrics(SM_CYSCREEN) - ph) / 2;
-
-    state->hPopupWnd = CreateWindowEx(0, TEXT("MediaShow2Popup"), APP_NAME,
-        WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME,
-        sx, sy, pw, ph,
-        NULL, NULL, GetModuleHandle(0), NULL);
-
-    if (!state->hPopupWnd) return;
-    SetWindowLongPtr(state->hPopupWnd, GWLP_USERDATA, (LONG_PTR)state);
-    state->isPopupMode = TRUE;
-
-    // Create player controls inside popup
-    CreateControls(state);
-
-    // Copy playback state from child to popup
-    if (state->isPlaying) {
-        if (state->useDirectShow)
-            DSPlayer_UpdateVideoWindow(state->pDSPlayer, NULL);
-        else
-            MFPlayer_UpdateVideoWindow(state->pMFPlayer, NULL);
-    }
-    UpdateLayout(state);
-    UpdateStatus(state);
-    UpdateSeekbar(state);
-    UpdateVolumeSlider(state);
-}
-
-static void ShowTrayIcon(PluginState* state) {
-    if (state->inTray) return;
-    static NOTIFYICONDATA nid = {0};
-    nid.cbSize = sizeof(nid);
-    nid.hWnd = state->hMainWnd;
-    nid.uID = 1;
-    nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    nid.uCallbackMessage = WM_TRAYICON;
-    nid.hIcon = LoadIcon(GetModuleHandle(0), MAKEINTRESOURCE(IDI_APPLICATION));
-    _tcscpy(nid.szTip, TEXT("MediaShow2"));
-    Shell_NotifyIcon(NIM_ADD, &nid);
-    state->inTray = TRUE;
-}
-
-static void RemoveTrayIcon(PluginState* state) {
-    if (!state->inTray) return;
-    static NOTIFYICONDATA nid = {0};
-    nid.cbSize = sizeof(nid);
-    nid.hWnd = state->hMainWnd;
-    nid.uID = 1;
-    Shell_NotifyIcon(NIM_DELETE, &nid);
-    state->inTray = FALSE;
-}
-
-static void ShowTrayMenu(PluginState* state) {
-    HMENU hMenu = CreatePopupMenu();
-    AppendMenu(hMenu, MF_STRING, IDM_TRAY_PLAY,
-        (state->isPlaying && !state->isPaused) ? TEXT("Pause") : TEXT("Play"));
-    AppendMenu(hMenu, MF_STRING, IDM_TRAY_STOP, TEXT("Stop"));
-    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-    AppendMenu(hMenu, MF_STRING, IDM_TRAY_PREV, TEXT("Previous"));
-    AppendMenu(hMenu, MF_STRING, IDM_TRAY_NEXT, TEXT("Next"));
-    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-    AppendMenu(hMenu, MF_STRING, IDM_TRAY_SHOW, TEXT("Show Player"));
-    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-    AppendMenu(hMenu, MF_STRING, IDM_TRAY_EXIT, TEXT("Exit"));
-
-    POINT pt;
-    GetCursorPos(&pt);
-    SetForegroundWindow(state->hMainWnd);
-    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, state->hMainWnd, NULL);
-    DestroyMenu(hMenu);
-}
-
-/* -----------------------------------------------------------------------
    Main window procedure
    ----------------------------------------------------------------------- */
 static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1018,7 +915,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
         state->pDSPlayer = DSPlayer_Create(state->hVideoWnd, OnMFEnd, state);
 
-        // Controls created in ListLoadW (not here)
+        CreateControls(state);
         return 0;
     }
 
@@ -1331,59 +1228,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             ToggleFullscreen(state);
             break;
 
-        case IDM_POPOUT:
-            // Same as Always on Top — switch to popup mode
-            SendMessage(hWnd, WM_COMMAND, IDM_ALWAYSONTOP, 0);
-            break;
-
-        case IDM_ALWAYSONTOP: {
-            DWORD style = (DWORD)GetWindowLong(hWnd, GWL_STYLE);
-            BOOL isChild = (style & WS_CHILD) != 0;
-
-            if (isChild) {
-                // Switch to popup for topmost support
-                style &= ~WS_CHILD;
-                style |= WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME;
-                SetWindowLong(hWnd, GWL_STYLE, style);
-                SetParent(hWnd, NULL);
-                int pw = 500, ph = 400;
-                int sx = (GetSystemMetrics(SM_CXSCREEN) - pw) / 2;
-                int sy = (GetSystemMetrics(SM_CYSCREEN) - ph) / 2;
-                SetWindowPos(hWnd, HWND_TOPMOST, sx, sy, pw, ph, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-                state->isPopupMode = TRUE;
-            } else {
-                // Already popup — toggle topmost
-                state->popupHasTopmost = !state->popupHasTopmost;
-                SetWindowPos(hWnd,
-                    state->popupHasTopmost ? HWND_TOPMOST : HWND_NOTOPMOST,
-                    0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            }
-            UpdateLayout(state);
-            break;
-        }
-
-        case IDM_TRAY_PLAY:
-            SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
-            break;
-        case IDM_TRAY_STOP:
-            SendMessage(hWnd, WM_COMMAND, IDM_STOP, 0);
-            break;
-        case IDM_TRAY_PREV:
-            SendMessage(hWnd, WM_COMMAND, IDM_PREV, 0);
-            break;
-        case IDM_TRAY_NEXT:
-            SendMessage(hWnd, WM_COMMAND, IDM_NEXT, 0);
-            break;
-        case IDM_TRAY_SHOW:
-            ShowWindow(hWnd, SW_SHOW);
-            SetForegroundWindow(hWnd);
-            RemoveTrayIcon(state);
-            break;
-        case IDM_TRAY_EXIT:
-            RemoveTrayIcon(state);
-            SendMessage(hWnd, WM_COMMAND, IDM_STOP, 0);
-            break;
-
         case IDM_SHOWPLAYLIST:
             state->showPlaylist = !state->showPlaylist;
             UpdatePlaylist(state);
@@ -1422,15 +1266,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         }
         return 0;
     }
-
-    /* ---- Tray icon ---- */
-    case WM_TRAYICON:
-        if (state && LOWORD(lParam) == WM_RBUTTONUP)
-            ShowTrayMenu(state);
-        else if (state && LOWORD(lParam) == WM_LBUTTONDBLCLK) {
-            SendMessage(hWnd, WM_COMMAND, IDM_TRAY_SHOW, 0);
-        }
-        return 0;
 
     /* ---- Timer: position polling ---- */
     case WM_TIMER:
@@ -1501,40 +1336,26 @@ HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
 }
 
 HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
-    // 1. Create popup window (main player)
-    RegisterPopupClass();
-    int pw = 640, ph = 480;
-    int sx = (GetSystemMetrics(SM_CXSCREEN) - pw) / 2;
-    int sy = (GetSystemMetrics(SM_CYSCREEN) - ph) / 2;
-
-    HWND hWnd = CreateWindowEx(0, TEXT("MediaShow2Popup"), APP_NAME,
-        WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME,
-        sx, sy, pw, ph,
-        NULL, NULL, GetModuleHandle(0), NULL);
+    RegisterMainWndClass();
+    HWND hWnd = CreateWindowEx(0, TEXT("MediaShow2Main"), APP_NAME,
+        WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
+        0, 0, 100, 100,
+        ParentWin, (HMENU)IDC_MAIN, GetModuleHandle(0), NULL);
     if (!hWnd) return NULL;
 
     PluginState* state = GetState(hWnd);
     if (!state) { DestroyWindow(hWnd); return NULL; }
 
-    // 2. Create minimal WS_CHILD placeholder for TC
-    HWND hChild = CreateWindowEx(0, TEXT("MediaShow2Main"), TEXT(""),
-        WS_CHILD, 0, 0, 100, 100,
-        ParentWin, NULL, GetModuleHandle(0), NULL);
-    if (hChild) {
-        SetProp(hChild, TEXT("STATE"), (HANDLE)state);
-        state->hParentWnd = ParentWin;
-    }
+    // Defect #7 fix: store ParentWin for correct itm_next routing
+    state->hParentWnd = ParentWin;
 
-    state->hMainWnd = hWnd;
-    state->isPopupMode = TRUE;
-
-    // Dark mode
+    // Defect #8 fix: read dark mode flag from TC
     state->isDarkMode = ((ShowFlags & lcp_darkmode) || (ShowFlags & lcp_darkmodenative)) ? TRUE : FALSE;
     ApplyTheme(state);
 
     _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
 
-    // Playlist from TC selected files
+    // Get playlist from TC selected files (original MediaShow approach)
     TCHAR** selFiles = NULL;
     int selCount = 0;
     GetSelectedFilesFromTC(ParentWin, &selFiles, &selCount);
@@ -1544,9 +1365,6 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         BuildPlaylist(state, ParentWin, FileToLoad);
     }
     state->showPlaylist = IsAudioOnly(FileToLoad);
-
-    // Create controls inside popup
-    CreateControls(state);
 
     SetTimer(hWnd, 1, 500, NULL);
     UpdatePlaylist(state);
@@ -1577,9 +1395,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     UpdateStatus(state);
     UpdateSeekbar(state);
     UpdateVolumeSlider(state);
-
-    // Return placeholder to TC (required by WLX API)
-    return hChild ? hChild : hWnd;
+    return hWnd;
 }
 
 int __stdcall ListLoadNext(HWND ParentWin, HWND PluginWin, char* FileToLoad, int ShowFlags) {
@@ -1640,14 +1456,8 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 void __stdcall ListCloseWindow(HWND ListWin) {
     PluginState* state = GetState(ListWin);
     if (state) {
-        if (state->isPopupMode && state->isPlaying) {
-            // Popup lives independently — just hide the placeholder
-            ShowWindow(ListWin, SW_HIDE);
-            return;
-        }
         if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
         else                      MFPlayer_Stop(state->pMFPlayer);
-        RemoveTrayIcon(state);
     }
     DestroyWindow(ListWin);
 }

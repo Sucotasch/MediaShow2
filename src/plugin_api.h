@@ -39,16 +39,6 @@
 #define IDM_SEEK_FWD          4042
 #define IDM_SEEK_BACK         4043
 #define IDM_SHOWPLAYLIST      4044
-#define IDM_ALWAYSONTOP       4050
 #define IDM_FULLSCREEN        4051
-#define IDM_POPOUT            4060
-
-#define WM_TRAYICON           (WM_USER + 300)
-#define IDM_TRAY_PLAY         4070
-#define IDM_TRAY_STOP         4071
-#define IDM_TRAY_PREV         4072
-#define IDM_TRAY_NEXT         4073
-#define IDM_TRAY_SHOW         4074
-#define IDM_TRAY_EXIT         4075
 
 #endif /* PLUGIN_API_H */
