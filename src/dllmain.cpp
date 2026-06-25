@@ -235,14 +235,14 @@ static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outC
     TCHAR dbg1[128]; _sntprintf(dbg1, 128, TEXT("MediaShow2: TC root class=%s\n"), rootClass);
     OutputDebugString(dbg1);
 
-    // Find SysListView32 in TC's window hierarchy
+    // Find SysListView32 — try current root, then go up one more level
     HWND hListView = FindWindowEx(hRoot, NULL, WC_LISTVIEW, NULL);
     if (!hListView) {
-        // Search deeper
-        HWND hChild = NULL;
-        while ((hChild = FindWindowEx(hRoot, hChild, NULL, NULL)) != NULL) {
-            HWND hSub = FindWindowEx(hChild, NULL, WC_LISTVIEW, NULL);
-            if (hSub) { hListView = hSub; break; }
+        // TLister doesn't have ListView — try parent (TC main window)
+        HWND hAbove = GetParent(hRoot);
+        if (hAbove) {
+            hListView = FindWindowEx(hAbove, NULL, WC_LISTVIEW, NULL);
+            if (hListView) hRoot = hAbove;  // Use TC main window for dir text
         }
     }
 
