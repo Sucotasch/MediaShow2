@@ -738,15 +738,29 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         return 0;
     case WM_LBUTTONDOWN: {
         if (state && !state->showPlaylist) {
-            state->lastClickTime = GetTickCount();
+            DWORD now = GetTickCount();
+            if (state->lastClickTime && (now - state->lastClickTime <= 300)) {
+                state->lastClickTime = 0;
+                SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+            } else {
+                state->lastClickTime = now;
+                SetTimer(hWnd, IDC_CLICK_TIMER, 300, NULL);
+            }
         }
-        if (state)
-            SendMessage(state->hMainWnd, msg, wParam, lParam);
+        return 0;
+    }
+    case WM_TIMER: {
+        if (state && wParam == IDC_CLICK_TIMER) {
+            KillTimer(hWnd, IDC_CLICK_TIMER);
+            if (state->lastClickTime) {
+                state->lastClickTime = 0;
+                SendMessage(state->hMainWnd, WM_COMMAND, IDM_PLAY, 0);
+            }
+        }
         return 0;
     }
     case WM_LBUTTONUP:
-        if (state) ReleaseCapture();
-        break;
+        return 0;
     case WM_LBUTTONDBLCLK:
         if (state)
             SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
@@ -886,41 +900,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         }
         return 0;
     }
-
-    /* ---- Mouse click on video: pause / double-click: fullscreen ---- */
-    case WM_LBUTTONDOWN: {
-        if (!state || state->showPlaylist) break;
-        DWORD now = GetTickCount();
-        if (state->lastClickTime && (now - state->lastClickTime <= 300)) {
-            KillTimer(hWnd, IDC_CLICK_TIMER);
-            state->lastClickTime = 0;
-            SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
-        } else {
-            state->lastClickTime = now;
-            SetTimer(hWnd, IDC_CLICK_TIMER, 300, NULL);
-        }
-        return 0;
-    }
-    case WM_TIMER:
-        if (wParam == IDC_CLICK_TIMER && state) {
-            KillTimer(hWnd, IDC_CLICK_TIMER);
-            if (state->lastClickTime) {
-                state->lastClickTime = 0;
-                SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
-            }
-        } else if (wParam == 1 && state) {
-            if (state->duration <= 0) {
-                state->duration = state->useDirectShow ?
-                    DSPlayer_GetDuration(state->pDSPlayer) :
-                    MFPlayer_GetDuration(state->pMFPlayer);
-            }
-            state->position = state->useDirectShow ?
-                DSPlayer_GetPosition(state->pDSPlayer) :
-                MFPlayer_GetPosition(state->pMFPlayer);
-            UpdateStatus(state);
-            UpdateSeekbar(state);
-        }
-        return 0;
 
     /* ---- Context menu ---- */
     case WM_CONTEXTMENU:
@@ -1187,6 +1166,22 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         }
         return 0;
     }
+
+    /* ---- Timer: position polling ---- */
+    case WM_TIMER:
+        if (wParam == 1 && state) {
+            if (state->duration <= 0) {
+                state->duration = state->useDirectShow ?
+                    DSPlayer_GetDuration(state->pDSPlayer) :
+                    MFPlayer_GetDuration(state->pMFPlayer);
+            }
+            state->position = state->useDirectShow ?
+                DSPlayer_GetPosition(state->pDSPlayer) :
+                MFPlayer_GetPosition(state->pMFPlayer);
+            UpdateStatus(state);
+            UpdateSeekbar(state);
+        }
+        return 0;
 
     /* ---- Cleanup ---- */
     case WM_DESTROY:
