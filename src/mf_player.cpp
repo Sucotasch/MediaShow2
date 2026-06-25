@@ -242,6 +242,18 @@ HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* heig
     return hr;
 }
 
+double MFPlayer_GetAspectRatio(MFPlayer* player) {
+    if (!player) return 0;
+    tagMFPlayer* p = (tagMFPlayer*)player;
+    if (!p->pVideoCtrl) return 0;
+    SIZE nativeSize = {0};
+    if (SUCCEEDED(p->pVideoCtrl->GetNativeVideoSize(&nativeSize, NULL)) &&
+        nativeSize.cx > 0 && nativeSize.cy > 0) {
+        return (double)nativeSize.cx / (double)nativeSize.cy;
+    }
+    return 0;
+}
+
 void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     if (!player) return;
     tagMFPlayer* p = (tagMFPlayer*)player;
@@ -256,26 +268,5 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
         return;
     }
 
-    SIZE nativeSize = {0};
-    int cw = wrc.right  - wrc.left;
-    int ch = wrc.bottom - wrc.top;
-
-    if (cw > 0 && ch > 0 &&
-        SUCCEEDED(p->pVideoCtrl->GetNativeVideoSize(&nativeSize, NULL)) &&
-        nativeSize.cx > 0 && nativeSize.cy > 0) {
-        double srcAr = (double)nativeSize.cx / (double)nativeSize.cy;
-        double dstAr = (double)cw / (double)ch;
-        int vx = 0, vy = 0, vw = cw, vh = ch;
-        if (srcAr > dstAr) {
-            vh = (int)((double)cw / srcAr);
-            vy = (ch - vh) / 2;
-        } else {
-            vw = (int)((double)ch * srcAr);
-            vx = (cw - vw) / 2;
-        }
-        RECT dst = { vx, vy, vx + vw, vy + vh };
-        p->pVideoCtrl->SetVideoPosition(NULL, &dst);
-    } else {
-        p->pVideoCtrl->SetVideoPosition(NULL, &wrc);
-    }
+    p->pVideoCtrl->SetVideoPosition(NULL, &wrc);
 }

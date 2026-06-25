@@ -215,6 +215,19 @@ double DSPlayer_GetPosition(DSPlayer* player) {
     return pos / 10000000.0;
 }
 
+double DSPlayer_GetAspectRatio(DSPlayer* player) {
+    if (!player) return 0;
+    tagDSPlayer* p = (tagDSPlayer*)player;
+    if (!p->pBasicVideo) return 0;
+    long natW = 0, natH = 0;
+    if (SUCCEEDED(p->pBasicVideo->get_VideoWidth(&natW)) &&
+        SUCCEEDED(p->pBasicVideo->get_VideoHeight(&natH)) &&
+        natW > 0 && natH > 0) {
+        return (double)natW / (double)natH;
+    }
+    return 0;
+}
+
 void DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc) {
     if (!player) return;
     tagDSPlayer* p = (tagDSPlayer*)player;
@@ -233,26 +246,5 @@ void DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc) {
     int ch = wrc.bottom - wrc.top;
     if (cw <= 0 || ch <= 0) return;
 
-    int vx = 0, vy = 0, vw = cw, vh = ch;
-
-    if (p->pBasicVideo) {
-        long natW = 0, natH = 0;
-        if (SUCCEEDED(p->pBasicVideo->get_VideoWidth(&natW)) &&
-            SUCCEEDED(p->pBasicVideo->get_VideoHeight(&natH)) &&
-            natW > 0 && natH > 0) {
-            double srcAr = (double)natW / (double)natH;
-            double dstAr = (double)cw   / (double)ch;
-            if (srcAr > dstAr) {
-                vw = cw;
-                vh = (int)((double)cw / srcAr);
-                vy = (ch - vh) / 2;
-            } else {
-                vh = ch;
-                vw = (int)((double)ch * srcAr);
-                vx = (cw - vw) / 2;
-            }
-        }
-    }
-
-    p->pVideoWindow->SetWindowPosition(vx, vy, vw, vh);
+    p->pVideoWindow->SetWindowPosition(0, 0, cw, ch);
 }

@@ -25,6 +25,7 @@ BOOL    DSPlayer_IsPlaying(DSPlayer* player);
 BOOL    DSPlayer_IsPaused(DSPlayer* player);
 double  DSPlayer_GetDuration(DSPlayer* player);
 double  DSPlayer_GetPosition(DSPlayer* player);
+double  DSPlayer_GetAspectRatio(DSPlayer* player);
 
 void    DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc);
 
