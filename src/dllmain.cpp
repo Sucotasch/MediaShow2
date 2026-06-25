@@ -736,12 +736,14 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         if (state)
             SendMessage(state->hMainWnd, msg, wParam, lParam);
         return 0;
-    case WM_LBUTTONDOWN:
-        if (state) {
-            SetCapture(hWnd);
-            SendMessage(state->hMainWnd, msg, wParam, lParam);
+    case WM_LBUTTONDOWN: {
+        if (state && !state->showPlaylist) {
+            state->lastClickTime = GetTickCount();
         }
+        if (state)
+            SendMessage(state->hMainWnd, msg, wParam, lParam);
         return 0;
+    }
     case WM_LBUTTONUP:
         if (state) ReleaseCapture();
         break;
@@ -889,22 +891,36 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     case WM_LBUTTONDOWN: {
         if (!state || state->showPlaylist) break;
         DWORD now = GetTickCount();
-        DWORD diff = now - state->lastClickTime;
-        TCHAR dbg[128]; _sntprintf(dbg, 128, TEXT("MediaShow2: click diff=%lu last=%lu now=%lu\n"),
-            diff, state->lastClickTime, now);
-        OutputDebugString(dbg);
-        if (state->lastClickTime && diff <= 1000) {
+        if (state->lastClickTime && (now - state->lastClickTime <= 300)) {
+            KillTimer(hWnd, IDC_CLICK_TIMER);
             state->lastClickTime = 0;
-            OutputDebugString(TEXT("MediaShow2: DOUBLE CLICK\n"));
             SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
-            if (state->isPaused) SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
         } else {
             state->lastClickTime = now;
-            OutputDebugString(TEXT("MediaShow2: SINGLE CLICK\n"));
-            SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
+            SetTimer(hWnd, IDC_CLICK_TIMER, 300, NULL);
         }
         return 0;
     }
+    case WM_TIMER:
+        if (wParam == IDC_CLICK_TIMER && state) {
+            KillTimer(hWnd, IDC_CLICK_TIMER);
+            if (state->lastClickTime) {
+                state->lastClickTime = 0;
+                SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
+            }
+        } else if (wParam == 1 && state) {
+            if (state->duration <= 0) {
+                state->duration = state->useDirectShow ?
+                    DSPlayer_GetDuration(state->pDSPlayer) :
+                    MFPlayer_GetDuration(state->pMFPlayer);
+            }
+            state->position = state->useDirectShow ?
+                DSPlayer_GetPosition(state->pDSPlayer) :
+                MFPlayer_GetPosition(state->pMFPlayer);
+            UpdateStatus(state);
+            UpdateSeekbar(state);
+        }
+        return 0;
 
     /* ---- Context menu ---- */
     case WM_CONTEXTMENU:
@@ -1171,22 +1187,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         }
         return 0;
     }
-
-    /* ---- Timer: position polling ---- */
-    case WM_TIMER:
-        if (wParam == 1 && state) {
-            if (state->duration <= 0) {
-                state->duration = state->useDirectShow ?
-                    DSPlayer_GetDuration(state->pDSPlayer) :
-                    MFPlayer_GetDuration(state->pMFPlayer);
-            }
-            state->position = state->useDirectShow ?
-                DSPlayer_GetPosition(state->pDSPlayer) :
-                MFPlayer_GetPosition(state->pMFPlayer);
-            UpdateStatus(state);
-            UpdateSeekbar(state);
-        }
-        return 0;
 
     /* ---- Cleanup ---- */
     case WM_DESTROY:
