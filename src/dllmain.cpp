@@ -1330,36 +1330,36 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             ToggleFullscreen(state);
             break;
 
-        case IDM_POPOUT: {
-            // Switch from WS_CHILD to WS_POPUP — keep all controls
+        case IDM_POPOUT:
+            // Same as Always on Top — switch to popup mode
+            SendMessage(hWnd, WM_COMMAND, IDM_ALWAYSONTOP, 0);
+            break;
+
+        case IDM_ALWAYSONTOP: {
             DWORD style = (DWORD)GetWindowLong(hWnd, GWL_STYLE);
-            DWORD exStyle = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
+            BOOL isChild = (style & WS_CHILD) != 0;
 
-            // Remove child style, add popup styles
-            style &= ~WS_CHILD;
-            style |= WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME;
-            SetWindowLong(hWnd, GWL_STYLE, style);
-
-            // Reparent to desktop
-            SetParent(hWnd, NULL);
-
-            // Resize and center
-            int pw = 500, ph = 400;
-            int sx = (GetSystemMetrics(SM_CXSCREEN) - pw) / 2;
-            int sy = (GetSystemMetrics(SM_CYSCREEN) - ph) / 2;
-            SetWindowPos(hWnd, NULL, sx, sy, pw, ph, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-
-            state->isPopupMode = TRUE;
+            if (isChild) {
+                // Switch to popup for topmost support
+                style &= ~WS_CHILD;
+                style |= WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME;
+                SetWindowLong(hWnd, GWL_STYLE, style);
+                SetParent(hWnd, NULL);
+                int pw = 500, ph = 400;
+                int sx = (GetSystemMetrics(SM_CXSCREEN) - pw) / 2;
+                int sy = (GetSystemMetrics(SM_CYSCREEN) - ph) / 2;
+                SetWindowPos(hWnd, HWND_TOPMOST, sx, sy, pw, ph, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+                state->isPopupMode = TRUE;
+            } else {
+                // Already popup — toggle topmost
+                state->popupHasTopmost = !state->popupHasTopmost;
+                SetWindowPos(hWnd,
+                    state->popupHasTopmost ? HWND_TOPMOST : HWND_NOTOPMOST,
+                    0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            }
             UpdateLayout(state);
             break;
         }
-
-        case IDM_ALWAYSONTOP:
-            state->popupHasTopmost = !state->popupHasTopmost;
-            SetWindowPos(hWnd,
-                state->popupHasTopmost ? HWND_TOPMOST : HWND_NOTOPMOST,
-                0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            break;
 
         case IDM_TRAY_PLAY:
             SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
