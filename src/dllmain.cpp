@@ -737,9 +737,14 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             SendMessage(state->hMainWnd, msg, wParam, lParam);
         return 0;
     case WM_LBUTTONDOWN:
-        if (state)
+        if (state) {
+            SetCapture(hWnd);
             SendMessage(state->hMainWnd, msg, wParam, lParam);
+        }
         return 0;
+    case WM_LBUTTONUP:
+        if (state) ReleaseCapture();
+        break;
     case WM_LBUTTONDBLCLK:
         if (state)
             SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
