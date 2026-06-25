@@ -235,24 +235,18 @@ static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outC
     TCHAR dbg1[128]; _sntprintf(dbg1, 128, TEXT("MediaShow2: TC root class=%s\n"), rootClass);
     OutputDebugString(dbg1);
 
-    // Find SysListView32 — try current root, then go up one more level
-    HWND hListView = FindWindowEx(hRoot, NULL, WC_LISTVIEW, NULL);
-    if (!hListView) {
-        // TLister doesn't have ListView — try parent (TC main window)
-        HWND hAbove = GetParent(hRoot);
-        if (hAbove) {
-            hListView = FindWindowEx(hAbove, NULL, WC_LISTVIEW, NULL);
-            if (hListView) {
-                hRoot = hAbove;
-            } else {
-                // Enumerate all children of parent to see what's there
-                HWND hC = NULL;
-                while ((hC = FindWindowEx(hAbove, hC, NULL, NULL)) != NULL) {
-                    TCHAR cls[64] = {0};
-                    GetClassName(hC, cls, 64);
-                    TCHAR d[128]; _sntprintf(d, 128, TEXT("MediaShow2: parent child=%s\n"), cls);
-                    OutputDebugString(d);
-                }
+    // Find SysListView32 — search among siblings of hRoot (TLister)
+    HWND hListView = NULL;
+    HWND hAbove = GetParent(hRoot);
+    if (hAbove) {
+        // Enumerate siblings of hRoot to find SysListView32
+        HWND hC = NULL;
+        while ((hC = FindWindowEx(hAbove, hC, NULL, NULL)) != NULL) {
+            TCHAR cls[64] = {0};
+            GetClassName(hC, cls, 64);
+            if (_tcscmp(cls, WC_LISTVIEW) == 0) {
+                hListView = hC;
+                break;
             }
         }
     }
