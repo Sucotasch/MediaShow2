@@ -242,7 +242,18 @@ static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outC
         HWND hAbove = GetParent(hRoot);
         if (hAbove) {
             hListView = FindWindowEx(hAbove, NULL, WC_LISTVIEW, NULL);
-            if (hListView) hRoot = hAbove;  // Use TC main window for dir text
+            if (hListView) {
+                hRoot = hAbove;
+            } else {
+                // Enumerate all children of parent to see what's there
+                HWND hC = NULL;
+                while ((hC = FindWindowEx(hAbove, hC, NULL, NULL)) != NULL) {
+                    TCHAR cls[64] = {0};
+                    GetClassName(hC, cls, 64);
+                    TCHAR d[128]; _sntprintf(d, 128, TEXT("MediaShow2: parent child=%s\n"), cls);
+                    OutputDebugString(d);
+                }
+            }
         }
     }
 
