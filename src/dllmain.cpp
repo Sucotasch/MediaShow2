@@ -880,7 +880,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     case WM_LBUTTONDOWN: {
         if (!state || state->showPlaylist) break;
         DWORD now = GetTickCount();
-        if (state->lastClickTime && (now - state->lastClickTime <= GetDoubleClickTime())) {
+        if (state->lastClickTime && (now - state->lastClickTime <= 800)) {
             state->lastClickTime = 0;
             SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
             if (state->isPaused) SendMessage(hWnd, WM_COMMAND, IDM_PLAY, 0);
