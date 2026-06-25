@@ -211,15 +211,36 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outD
 static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outCount) {
     *outFiles = NULL; *outCount = 0;
     HWND hTC = GetAncestor(hListerWnd, GA_ROOT);
-    if (!hTC) return;
-    HWND hListView = FindWindowEx(hTC, NULL, WC_LISTVIEW, NULL);
-    if (!hListView) return;
+    if (!hTC) { OutputDebugString(TEXT("MediaShow2: GetSelectedFiles - no TC window\n")); return; }
+
+    TCHAR className[64] = {0};
+    HWND hChild = NULL;
+    HWND hListView = NULL;
+    // Enumerate children to find SysListView32
+    while ((hChild = FindWindowEx(hTC, hChild, NULL, NULL)) != NULL) {
+        GetClassName(hChild, className, 64);
+        TCHAR dbg[128]; _sntprintf(dbg, 128, TEXT("MediaShow2: child class=%s\n"), className);
+        OutputDebugString(dbg);
+        if (_tcscmp(className, WC_LISTVIEW) == 0) {
+            hListView = hChild;
+            break;
+        }
+    }
+
+    if (!hListView) {
+        OutputDebugString(TEXT("MediaShow2: GetSelectedFiles - no ListView found\n"));
+        return;
+    }
 
     int count = (int)SendMessage(hListView, LVM_GETSELECTEDCOUNT, 0, 0);
+    TCHAR dbg[64]; _sntprintf(dbg, 64, TEXT("MediaShow2: selected count=%d\n"), count);
+    OutputDebugString(dbg);
     if (count == 0) return;
 
     TCHAR dir[MAX_PATH] = {0};
     GetWindowText(hTC, dir, MAX_PATH);
+    TCHAR dbg2[256]; _sntprintf(dbg2, 256, TEXT("MediaShow2: TC dir=%s\n"), dir);
+    OutputDebugString(dbg2);
 
     TCHAR** files = (TCHAR**)calloc(count, sizeof(TCHAR*));
     if (!files) return;
