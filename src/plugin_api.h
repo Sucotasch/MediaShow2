@@ -24,6 +24,7 @@
 #define IDC_VOLSLIDER         104
 #define IDC_SToolBar          105
 #define IDC_PLAYLIST          106
+#define IDC_CLICK_TIMER       107
 
 #define IDM_PLAY              4000
 #define IDM_STOP              4002
