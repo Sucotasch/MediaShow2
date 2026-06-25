@@ -391,8 +391,12 @@ static void UpdateLayout(PluginState* state) {
 
     if (state->hVideoWnd)
         ShowWindow(state->hVideoWnd, SW_SHOW);
-    if (state->hPlaylist)
+    if (state->hPlaylist) {
         ShowWindow(state->hPlaylist, state->showPlaylist ? SW_SHOW : SW_HIDE);
+        if (state->showPlaylist)
+            SetWindowPos(state->hPlaylist, HWND_TOP, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE);
+    }
 
     // Видео всегда видно — центрируем с учётом aspect ratio
     if (state->hVideoWnd) {
@@ -501,7 +505,7 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
         IDM_ALWAYSONTOP, TEXT("Always on Top\tCtrl+T"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
-        IDM_SHOWPLAYLIST, TEXT("Show Playlist\tCtrl+P"));
+        IDM_SHOWPLAYLIST, TEXT("Show Playlist\tL"));
     AppendMenu(hMenu, MF_STRING, IDM_FILEINFO, TEXT("File Info\tI"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_ABOUT, TEXT("About MediaShow2"));
@@ -814,13 +818,12 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             hWnd, (HMENU)IDC_VIDEO, GetModuleHandle(0), NULL);
         SetWindowSubclass(state->hVideoWnd, VideoWndProc, 0, (DWORD_PTR)state);
 
-        state->hPlaylist = CreateWindowEx(WS_EX_LAYERED, WC_LISTVIEW, TEXT(""),
-            WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
+        state->hPlaylist = CreateWindowEx(0, WC_LISTVIEW, TEXT(""),
+            WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS,
             0, 0, 100, 100,
             hWnd, (HMENU)IDC_PLAYLIST, GetModuleHandle(0), NULL);
         ListView_SetExtendedListViewStyle(state->hPlaylist,
             LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-        SetLayeredWindowAttributes(state->hPlaylist, 0, 180, LWA_ALPHA);
 
         LVCOLUMN lvc = {0};
         lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
@@ -1027,10 +1030,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         case VK_DOWN:  SendMessage(hWnd, WM_COMMAND, IDM_VOL_DOWN,      0); return 0;
         case 'M':      SendMessage(hWnd, WM_COMMAND, IDM_MUTE,          0); return 0;
         case VK_F11:   SendMessage(hWnd, WM_COMMAND, IDM_FULLSCREEN,    0); return 0;
-        case 'P':
-            if (GetKeyState(VK_CONTROL) & 0x8000)
-                SendMessage(hWnd, WM_COMMAND, IDM_SHOWPLAYLIST, 0);
-            return 0;
+        case 'L':      SendMessage(hWnd, WM_COMMAND, IDM_SHOWPLAYLIST,  0); return 0;
         case 'I':      SendMessage(hWnd, WM_COMMAND, IDM_FILEINFO,      0); return 0;
         case VK_ESCAPE:
             if (state->isFullscreen)
