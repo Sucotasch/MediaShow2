@@ -42,9 +42,4 @@
 #define IDM_ALWAYSONTOP       4050
 #define IDM_FULLSCREEN        4051
 
-#define IDM_PL_PLAY           4060
-#define IDM_PL_MOVEUP         4061
-#define IDM_PL_MOVEDOWN       4062
-#define IDM_PL_REMOVE         4063
-
 #endif /* PLUGIN_API_H */
