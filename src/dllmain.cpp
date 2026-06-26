@@ -20,6 +20,8 @@
 #define max(a,b) ((a)>(b)?(a):(b))
 #endif
 
+#define WM_DEFERRED_GETFILES (WM_APP + 100)
+
 static TCHAR iniPath[MAX_PATH] = {0};
 static ATOM  mainWndClass      = 0;
 static ATOM  fullscreenWndClass = 0;
@@ -200,79 +202,6 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outD
     *outCount = count;
 }
 
-/* -----------------------------------------------------------------------
-   Get selected files from TC panel — EnumWindows approach
-   Searches ALL windows belonging to TC process for SysListView32.
-   ----------------------------------------------------------------------- */
-struct EnumFindData { HWND result; DWORD processId; };
-
-static BOOL CALLBACK EnumFindListView(HWND hWnd, LPARAM lParam) {
-    EnumFindData* pfd = (EnumFindData*)lParam;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hWnd, &pid);
-    if (pid != pfd->processId) return TRUE;
-
-    TCHAR cls[64] = {0};
-    GetClassName(hWnd, cls, 64);
-    if (_tcscmp(cls, WC_LISTVIEW) == 0) {
-        int count = (int)SendMessage(hWnd, LVM_GETITEMCOUNT, 0, 0);
-        if (count > 0) {
-            pfd->result = hWnd;
-            return FALSE;
-        }
-    }
-    return TRUE;
-}
-
-static void GetSelectedFilesFromTC(HWND hListerWnd, TCHAR*** outFiles, int* outCount) {
-    *outFiles = NULL; *outCount = 0;
-
-    HWND hRoot = hListerWnd;
-    while (GetParent(hRoot)) hRoot = GetParent(hRoot);
-
-    DWORD tcPid = 0;
-    GetWindowThreadProcessId(hRoot, &tcPid);
-    if (!tcPid) { OutputDebugString(TEXT("MediaShow2: no TC pid\n")); return; }
-
-    EnumFindData fd = {0, tcPid};
-    EnumWindows(EnumFindListView, (LPARAM)&fd);
-    HWND hListView = fd.result;
-
-    if (!hListView) { OutputDebugString(TEXT("MediaShow2: SysListView32 NOT FOUND\n")); return; }
-
-    int count = (int)SendMessage(hListView, LVM_GETSELECTEDCOUNT, 0, 0);
-    TCHAR dbg[64]; _sntprintf(dbg, 64, TEXT("MediaShow2: selected count=%d\n"), count);
-    OutputDebugString(dbg);
-    if (count == 0) return;
-
-    TCHAR dir[MAX_PATH] = {0};
-    GetWindowText(hRoot, dir, MAX_PATH);
-    TCHAR dbg2[256]; _sntprintf(dbg2, 256, TEXT("MediaShow2: TC dir=%s\n"), dir);
-    OutputDebugString(dbg2);
-
-    TCHAR** files = (TCHAR**)calloc(count, sizeof(TCHAR*));
-    if (!files) return;
-
-    int idx = -1;
-    for (int i = 0; i < count; i++) {
-        idx = (int)SendMessage(hListView, LVM_GETNEXTITEM, idx, LVNI_SELECTED);
-        if (idx < 0) break;
-        TCHAR name[MAX_PATH] = {0};
-        LVITEM lvi = {0};
-        lvi.mask = LVIF_TEXT;
-        lvi.iItem = idx;
-        lvi.iSubItem = 0;
-        lvi.pszText = name;
-        lvi.cchTextMax = MAX_PATH;
-        SendMessage(hListView, LVM_GETITEMTEXT, idx, (LPARAM)&lvi);
-        TCHAR fullPath[MAX_PATH];
-        _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, name);
-        files[i] = _tcsdup(fullPath);
-    }
-    *outFiles = files;
-    *outCount = count;
-}
-
 static void BuildPlaylistFromSelection(PluginState* state, TCHAR** selFiles, int selCount, TCHAR* currentFile) {
     FreePlaylist(state);
     state->playlist      = selFiles;
@@ -428,6 +357,156 @@ static void UpdatePlaylist(PluginState* state) {
     if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount)
         ListView_SetItemState(state->hPlaylist, state->playlistIndex,
             LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+}
+
+/* -----------------------------------------------------------------------
+   Get selected files from TC
+   Find LCLListBox in TTOTAL_CMD and try LB_GETSELITEMS
+   ----------------------------------------------------------------------- */
+struct EnumFindData { HWND result; DWORD processId; };
+
+static BOOL CALLBACK EnumFindLCLListBox(HWND hWnd, LPARAM lParam) {
+    EnumFindData* pfd = (EnumFindData*)lParam;
+    TCHAR cls[128] = {0};
+    GetClassName(hWnd, cls, 128);
+
+    if (_tcscmp(cls, TEXT("LCLListBox")) == 0) {
+        int selCount = (int)SendMessage(hWnd, LB_GETSELCOUNT, 0, 0);
+        TCHAR dbg[256];
+        _sntprintf(dbg, 256, TEXT("MediaShow2: LCLListBox %p LB_GETSELCOUNT=%d\n"), hWnd, selCount);
+        OutputDebugString(dbg);
+
+        if (selCount > 0 && !pfd->result) {
+            pfd->result = hWnd;
+        }
+
+        // Also try owner data messages
+        int count = (int)SendMessage(hWnd, LB_GETCOUNT, 0, 0);
+        _sntprintf(dbg, 256, TEXT("MediaShow2: LCLListBox %p LB_GETCOUNT=%d\n"), hWnd, count);
+        OutputDebugString(dbg);
+    }
+    return TRUE;
+}
+
+static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
+    HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
+    if (!hTC) {
+        OutputDebugString(TEXT("MediaShow2: TTOTAL_CMD NOT FOUND\n"));
+        return;
+    }
+
+    // Find LCLListBox
+    EnumFindData fd = {0, 0};
+    EnumChildWindows(hTC, EnumFindLCLListBox, (LPARAM)&fd);
+
+    if (!fd.result) {
+        OutputDebugString(TEXT("MediaShow2: NO LCLListBox WITH SELECTION\n"));
+        return;
+    }
+
+    HWND hListBox = fd.result;
+    int selCount = (int)SendMessage(hListBox, LB_GETSELCOUNT, 0, 0);
+    TCHAR dbg[256];
+    _sntprintf(dbg, 256, TEXT("MediaShow2: Using LCLListBox sel=%d\n"), selCount);
+    OutputDebugString(dbg);
+
+    if (selCount <= 0) return;
+
+    int* selItems = (int*)calloc(selCount, sizeof(int));
+    SendMessage(hListBox, LB_GETSELITEMS, selCount, (LPARAM)selItems);
+
+    TCHAR dir[MAX_PATH];
+    _tcsncpy(dir, state->filePath, MAX_PATH - 1);
+    TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
+    if (lastSlash) *lastSlash = 0;
+
+    TCHAR** files = (TCHAR**)calloc(selCount, sizeof(TCHAR*));
+    state->fileDates = (FILETIME*)calloc(selCount, sizeof(FILETIME));
+    int validCount = 0;
+
+    for (int i = 0; i < selCount; i++) {
+        int len = (int)SendMessage(hListBox, LB_GETTEXTLEN, selItems[i], 0);
+        if (len <= 0) continue;
+        TCHAR* buf = (TCHAR*)calloc(len + 1, sizeof(TCHAR));
+        SendMessage(hListBox, LB_GETTEXT, selItems[i], (LPARAM)buf);
+
+        TCHAR dbg[512];
+        _sntprintf(dbg, 512, TEXT("MediaShow2: LB_GETTEXT[%d]='%s'\n"), i, buf);
+        OutputDebugString(dbg);
+
+        // TC returns: "filename size date time attributes"
+        // Find last space before a digit group that looks like a size (large number)
+        // The size always has at least 4 digits total (e.g. "1 234" or "12 345 678")
+        // Strategy: scan backwards from end, find " DD.MM.YYYY HH:MM" and extract filename before size
+        TCHAR* nameEnd = buf + _tcslen(buf);  // default: full string
+
+        // Find date pattern - scan for DD.MM.YYYY or YYYY-MM-DD
+        for (TCHAR* p = buf; *p; p++) {
+            if ((p[0] >= TEXT('0') && p[0] <= TEXT('9') &&
+                 p[1] >= TEXT('0') && p[1] <= TEXT('9') &&
+                 p[2] == TEXT('.') &&
+                 p[3] >= TEXT('0') && p[3] <= TEXT('9') &&
+                 p[4] >= TEXT('0') && p[4] <= TEXT('9') &&
+                 p[5] == TEXT('.') &&
+                 p[6] >= TEXT('0') && p[6] <= TEXT('9') &&
+                 p[7] >= TEXT('0') && p[7] <= TEXT('9')) ||
+                (p[0] >= TEXT('0') && p[0] <= TEXT('9') &&
+                 p[1] >= TEXT('0') && p[1] <= TEXT('9') &&
+                 p[2] >= TEXT('0') && p[2] <= TEXT('9') &&
+                 p[3] >= TEXT('0') && p[3] <= TEXT('9') &&
+                 p[4] == TEXT('-') &&
+                 p[5] >= TEXT('0') && p[5] <= TEXT('9') &&
+                 p[6] >= TEXT('0') && p[6] <= TEXT('9') &&
+                 p[7] == TEXT('-'))) {
+                // Found date - now walk backwards to find filename end
+                TCHAR* q = p;
+                while (q > buf && *(q-1) == TEXT(' ')) q--;
+                // Walk further back past the size digits
+                while (q > buf && *(q-1) >= TEXT('0') && *(q-1) <= TEXT('9')) q--;
+                while (q > buf && *(q-1) == TEXT(' ')) q--;
+                // Now q points to end of filename
+                nameEnd = q;
+                break;
+            }
+        }
+
+        TCHAR fullPath[MAX_PATH];
+        int nameLen = (int)(nameEnd - buf);
+        _tcsncpy(fullPath, dir, MAX_PATH - 1);
+        int dirLen = (int)_tcslen(fullPath);
+        _tcsncpy(fullPath + dirLen, TEXT("\\"), MAX_PATH - dirLen - 1);
+        dirLen++;
+        _tcsncpy(fullPath + dirLen, buf, min(nameLen, MAX_PATH - dirLen - 1));
+
+        _sntprintf(dbg, 512, TEXT("MediaShow2: file[%d]='%s'\n"), i, fullPath);
+        OutputDebugString(dbg);
+
+        files[validCount] = _tcsdup(fullPath);
+
+        // Get file date from filesystem
+        WIN32_FILE_ATTRIBUTE_DATA fad;
+        if (GetFileAttributesEx(fullPath, GetFileExInfoStandard, &fad)) {
+            state->fileDates[validCount] = fad.ftLastWriteTime;
+        }
+
+        validCount++;
+        free(buf);
+    }
+    free(selItems);
+
+    if (validCount == 0) return;
+
+    FreePlaylist(state);
+    state->playlist      = files;
+    state->playlistCount = validCount;
+    state->playlistIndex = 0;
+    for (int i = 0; i < validCount; i++) {
+        if (_tcsicmp(files[i], state->filePath) == 0) {
+            state->playlistIndex = i;
+            break;
+        }
+    }
+    UpdatePlaylist(state);
 }
 
 static double GetVideoAspectRatio(PluginState* state) {
@@ -1367,15 +1446,16 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
 
-    // Get playlist from TC selected files (original MediaShow approach)
-    TCHAR** selFiles = NULL;
-    int selCount = 0;
-    GetSelectedFilesFromTC(ParentWin, &selFiles, &selCount);
-    if (selFiles && selCount > 0) {
-        BuildPlaylistFromSelection(state, selFiles, selCount, FileToLoad);
-    } else {
-        BuildPlaylist(state, ParentWin, FileToLoad);
-    }
+    // Start with single file — playlist will be updated asynchronously
+    state->playlist      = (TCHAR**)calloc(1, sizeof(TCHAR*));
+    state->fileDates     = (FILETIME*)calloc(1, sizeof(FILETIME));
+    state->playlist[0]   = _tcsdup(FileToLoad);
+    state->playlistCount = 1;
+    state->playlistIndex = 0;
+
+    // Request selected files from TC via clipboard
+    RequestSelectedFiles(ParentWin, state);
+
     state->showPlaylist = IsAudioOnly(FileToLoad);
 
     SetTimer(hWnd, 1, 500, NULL);
