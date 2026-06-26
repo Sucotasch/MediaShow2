@@ -434,13 +434,8 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
         _sntprintf(dbg, 512, TEXT("MediaShow2: LB_GETTEXT[%d]='%s'\n"), i, buf);
         OutputDebugString(dbg);
 
-        // TC returns: "filename size date time attributes"
-        // Find last space before a digit group that looks like a size (large number)
-        // The size always has at least 4 digits total (e.g. "1 234" or "12 345 678")
-        // Strategy: scan backwards from end, find " DD.MM.YYYY HH:MM" and extract filename before size
-        // TC format: "filename NNN NNN NNN DD.MM.YYYY HH:MM -a--"
-        // Find date DD.MM.YYYY, take everything before it as "filename size"
-        // Then remove size from end (3 groups of digits separated by spaces)
+        // TC format: "filename.ext NNN NNN NNN DD.MM.YYYY HH:MM -a--"
+        // Right-to-left: find date, strip date+time+attrs, then strip size (3 digit groups)
         TCHAR* datePos = NULL;
         for (TCHAR* p = buf; p[9]; p++) {
             if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
@@ -453,42 +448,31 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
             }
         }
 
-        TCHAR dbg2[256];
-        _sntprintf(dbg2, 256, TEXT("MediaShow2: datePos=%p (found=%d)\n"), datePos, datePos != NULL);
-        OutputDebugString(dbg2);
-
         TCHAR fileName[MAX_PATH] = {0};
         if (datePos) {
             int beforeLen = (int)(datePos - buf);
             _tcsncpy(fileName, buf, beforeLen);
             fileName[beforeLen] = TEXT('\0');
-            // Trim trailing spaces
-            while (beforeLen > 0 && fileName[beforeLen-1] == TEXT(' '))
+            // TC uses NBSP (0x00A0) and TAB (0x0009) as separators, not just spaces
+            while (beforeLen > 0 && (fileName[beforeLen-1] == TEXT(' ') || fileName[beforeLen-1] == 0x00A0 || fileName[beforeLen-1] == 0x0009))
                 fileName[--beforeLen] = TEXT('\0');
-            // Remove size from end: "NNN NNN NNN" (3 groups of digits)
-            TCHAR* last = fileName + beforeLen - 1;
-            // Walk back past digits
-            while (last > fileName && *last >= '0' && *last <= '9') last--;
-            if (*last == TEXT(' ')) {
-                // Check if this is part of size: should be preceded by digits
-                TCHAR* prev = last - 1;
-                while (prev > fileName && *prev >= '0' && *prev <= '9') prev--;
-                if (*prev == TEXT(' ')) {
-                    // Another space - walk back one more group
-                    TCHAR* prev2 = prev - 1;
-                    while (prev2 > fileName && *prev2 >= '0' && *prev2 <= '9') prev2--;
-                    if (*prev2 == TEXT(' ')) {
-                        // All 3 groups found, filename ends before first space of size
-                        *prev2 = TEXT('\0');
-                    } else {
-                        // Only 2 groups visible, remove 2 groups
-                        *prev = TEXT('\0');
-                    }
-                } else {
-                    // Only 1 group visible
-                    *last = TEXT('\0');
-                }
-            }
+            // Strip 3 size groups from right: "NNN NBSP NNN NBSP NNN"
+            TCHAR* p = fileName + beforeLen - 1;
+            // Group 3 (rightmost)
+            while (p > fileName && *p >= '0' && *p <= '9') p--;
+            if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
+            else { p = fileName + beforeLen - 1; }
+            // Group 2
+            while (p > fileName && *p >= '0' && *p <= '9') p--;
+            if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
+            else { p = fileName + beforeLen - 1; }
+            // Group 1 (leftmost)
+            while (p > fileName && *p >= '0' && *p <= '9') p--;
+            if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
+            else { p = fileName + beforeLen - 1; }
+            *(p + 1) = TEXT('\0');
+            while (beforeLen > 0 && (fileName[beforeLen-1] == TEXT(' ') || fileName[beforeLen-1] == 0x00A0 || fileName[beforeLen-1] == 0x0009))
+                fileName[--beforeLen] = TEXT('\0');
         } else {
             _tcsncpy(fileName, buf, MAX_PATH - 1);
         }
@@ -1479,8 +1463,6 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     // Request selected files from TC via clipboard
     RequestSelectedFiles(ParentWin, state);
-
-    state->showPlaylist = IsAudioOnly(FileToLoad);
 
     SetTimer(hWnd, 1, 500, NULL);
     UpdatePlaylist(state);

@@ -222,9 +222,11 @@ MediaShow2/
 │   ├── mf_player.h/cpp     — Media Foundation движок
 │   ├── ds_player.h/cpp     — DirectShow fallback
 │   ├── plugin_api.h        — TC WLX SDK + ID контролов
-│   └── app.manifest        — DPI awareness, Common Controls v6
-├── sdk/
+│   ├── resources.rc        — ресурсы (манифест отключён из-за SxS)
+│   └── app.manifest        — DPI awareness, Common Controls v6 (НЕ подключён — см. resources.rc)
+├ sdk/
 │   └── listplug.h          — TC WLX SDK header
+├── res/                    — пустой каталог (пока не используется)
 ├── package.py              — скрипт упаковки в .wlx/.wlx64
 ├── PROJECT_CONTEXT.md      — этот документ
 └── MediaShow2.wlx64        — готовый плагин
@@ -232,26 +234,32 @@ MediaShow2/
 
 ### Что реализовано (частично)
 1. **Воспроизведение:** Media Foundation (IMFPMediaPlayer) + DirectShow (IGraphBuilder) fallback — работает
-2. **Toolbar:** Play/Stop/Prev/Next/<</>> кнопки — работают
+2. **Toolbar:** Play/Stop/Prev/Next/Rewind/Forward/Playlist (9 кнопок, Unicode-глифы) — работают
 3. **Seekbar:** TrackBar control — работает
-4. **Volume slider:** TrackBar control — работает
+4. **Volume slider:** TrackBar control + subclass (VolSliderProc) — работает
 5. **Status bar:** Win32 StatusBar — работает
-6. **Context menu:** WM_CONTEXTMENU — работает
-7. **Keyboard shortcuts:** Space, S, N, P, M, F11, Esc — работают
-8. **Mouse wheel:** Текущая реализация: Ctrl+wheel = volume, wheel = seek. ТРЕБУЕТСЯ: только volume, без привязки к seek
-9. **Auto-advance:** itm_next — работает
-10. **Playlist:** сканирование директории — работает (но нужен из выделенных файлов)
-11. **Dark mode:** через GetSysColor + lcp_darkmode — работает
-12. **ASLR + DEP:** CMAKE_SHARED_LINKER_FLAGS — работает
-13. **DPI awareness:** manifest — работает
-14. **Fullscreen:** F11 / двойной клик — работает
-15. **Aspect ratio:** letterboxing — работает
+6. **Context menu:** WM_CONTEXTMENU — работает (Play, Stop, Prev, Next, Vol, Mute, Seek, Fullscreen, Playlist, Info, About)
+7. **Keyboard shortcuts:** Space, S, ←/→ (Seek ±10s), ↑/↓ (Volume ±5%), M, F11, L, I, Esc — работают
+8. **Mouse wheel:** volume повсюду + playlist scroll (когда плейлист виден). Seek через wheel убран (Defect #3 fix)
+9. **Auto-advance:** itm_next — работает (Defect #7 fix: правильная маршрутизация через hParentWnd)
+10. **Playlist:** сканирование директории + запрос выделенных файлов через LCLListBox — работает (парсинг имени файла частично сломан)
+11. **Dark mode:** через GetSysColor + lcp_darkmode/lcp_darkmodenative + ApplyTheme (DarkMode_Explorer) — работает
+12. **ASLR + DEP:** /DYNAMICBASE /NXCOMPAT в CMakeLists.txt — работает
+13. **DPI awareness:** app.manifest существует, но отключён в resources.rc (SxS dependency). Контролы используют фиксированные размеры.
+14. **Fullscreen:** F11 / двойной клик + отдельное окно (Defect #15 fix) — работает
+15. **Aspect ratio:** letterboxing через UpdateLayout + ToggleFullscreen — работает
+16. **Playlist sorting:** клик по колонке → SortPlaylist (qsort_s) — работает
+17. **Playlist editing:** Delete (удаление), Enter (проигрывание), Ctrl+Up/Down (перемещение) — работают
+18. **Volume persistence:** SaveVolume/LoadVolume через INI — работает
+19. **Defect tracking:** систематические комментарии Defect #1–#21 — в коде
+20. **ListSendCommand:** lc_newparams (dark mode toggle) + lc_setpercent (seek) — работают
+21. **Theme support:** DarkMode_Explorer для ListView, hIconFont (Segoe UI Symbol) — работает
 
 ### Что НЕ реализовано
-1. **Плейлист из выделенных файлов TC** — механизм найден (LCLListBox + LB_GETTEXT), но парсинг имени файла сломан (прилипает размер), тип определяется неверно, даты пусты. См. секцию "Плейлист из выделенных файлов"
-2. **Современный UI** — текущий interface примитивен
-3. **Плейлист с редактированием**
-4. **Информация о файле + теги** (Album, Track no, bitrate и т.д.)
+1. **Плейлист из выделенных файлов** — запрос через LCLListBox работает, но парсинг имени файла сломан (прилипает размер из LB_GETTEXT). См. секцию "Плейлист из выделенных файлов"
+2. **Современный UI** — текущий интерфейс примитивен
+3. **Плейлист:** нет Drag & Drop, нет сохранения/загрузки файлов плейлиста (Random/Repeat не реализованы)
+4. **Информация о файле + теги** (Album, Track no, bitrate и т.д.) — только MessageBox с именем и длительностью
 5. **Редактирование тегов**
 6. **Always On Top**
 7. **Close To Tray (фоновое воспроизведение)**
@@ -291,11 +299,11 @@ MediaShow2/
    ```
    Причина: размер removal логика не работает корректно — `beforeLen` включает trailing space перед датой, а размер содержит пробелы между группами цифр. Нужен более надёжный алгоритм.
 
-2. **Тип файла всегда "Video"** — `showPlaylist` выставляется по `IsAudioOnly(state->filePath)` до замены плейлиста, но после `RequestSelectedFiles` плейлист содержит mp3 файлы. Нужно обновлять `showPlaylist` на основе текущего файла.
+~~2. **Тип файла всегда "Video"** — `showPlaylist` выставляется по `IsAudioOnly(state->filePath)` до замены плейлиста~~ — **ИСПРАВЛЕНО** (commit 920bd55)
 
-3. **Дата пуста (1601-01-01 04:00)** — `FreePlaylist()` уничтожает `state->fileDates` после заполнения через `GetFileAttributesEx`. Нужно сохранять массив дат перед вызовом `FreePlaylist`.
+~~3. **Дата пуста (1601-01-01 04:00)** — `FreePlaylist()` уничтожает `state->fileDates`~~ — **ИСПРАВЛЕНО** (commit 920bd55)
 
-4. **Проигрывание только одного файла** — после проигрывания текущего файла плейлист закрывается. Причина: `showPlaylist = FALSE` (тип "video") → плейлист скрыт → навигация по плейлисту не работает.
+~~4. **Проигрывание только одного файла**~~ — **ИСПРАВЛЕНО** (commit 920bd55)
 
 **Исправлено (commit 920bd55):**
 - Сохранение `fileDates` перед `FreePlaylist`
@@ -365,11 +373,10 @@ MediaShow2/
 |----------|---------|
 | Play/Pause | Пробел |
 | Stop | S |
-| Seek ±5с | ←/→ |
+| Seek ±10с | ←/→ |
 | Volume ±5% | ↑/↓ |
 | Mute | M |
 | Fullscreen | F11 |
-| Always On Top | Ctrl+T |
 | Playlist | L |
 | File Info | I |
 | Close | Esc |
@@ -388,11 +395,17 @@ MediaShow2/
 
 | Файл | Описание | Строки |
 |------|----------|--------|
-| `src/dllmain.cpp` | Основной код: TC API, UI, playlist | ~760 |
-| `src/mf_player.cpp` | Media Foundation движок | ~230 |
-| `src/ds_player.cpp` | DirectShow fallback | ~234 |
-| `src/plugin_api.h` | TC WLX SDK + ID контролов | ~43 |
+| `src/dllmain.cpp` | Основной код: TC API, UI, playlist, defect fixes | ~1642 |
+| `src/mf_player.cpp` | Media Foundation движок | ~272 |
+| `src/ds_player.cpp` | DirectShow fallback | ~250 |
+| `src/plugin_api.h` | TC WLX SDK + ID контролов | ~44 |
+| `src/resources.rc` | Ресурсы (манифест отключён) | ~4 |
+| `src/app.manifest` | DPI awareness (НЕ подключён) | — |
 | `MediaShow2.wlx64` | Готовый плагин | 14.7KB |
+
+**Известные баги в коде:**
+- **Дублирующийся LVN_COLUMNCLICK handler** — строки 1148–1160 и 1162–1174 в dllmain.cpp полностью идентичны. Второй обработчик недостижим.
+- **Двойная инициализация sortColumn** — строки 999–1000: `state->sortColumn = -1; state->sortColumn = -1;`
 
 ---
 
