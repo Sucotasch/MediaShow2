@@ -438,30 +438,52 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
         // Find last space before a digit group that looks like a size (large number)
         // The size always has at least 4 digits total (e.g. "1 234" or "12 345 678")
         // Strategy: scan backwards from end, find " DD.MM.YYYY HH:MM" and extract filename before size
-        // TC format: "filename size DD.MM.YYYY HH:MM -a--"
-        // Size is "NN NNN NNN" (digits with spaces). Date is DD.MM.YYYY.
-        // Find " DD.MM.YYYY " (space before date, space after date)
-        TCHAR* dateSep = NULL;
+        // TC format: "filename NNN NNN NNN DD.MM.YYYY HH:MM -a--"
+        // Find date DD.MM.YYYY, take everything before it as "filename size"
+        // Then remove size from end (3 groups of digits separated by spaces)
+        TCHAR* datePos = NULL;
         for (TCHAR* p = buf; p[9]; p++) {
-            if (p[0] == TEXT(' ') && p[10] == TEXT(' ') &&
-                p[3] == TEXT('.') && p[6] == TEXT('.') &&
-                p[1] >= '0' && p[1] <= '9' && p[2] >= '0' && p[2] <= '9' &&
-                p[4] >= '0' && p[4] <= '9' && p[5] >= '0' && p[5] <= '9' &&
-                p[7] >= '0' && p[7] <= '9' && p[8] >= '0' && p[8] <= '9') {
-                dateSep = p;
+            if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
+                p[0] >= '0' && p[0] <= '9' && p[1] >= '0' && p[1] <= '9' &&
+                p[3] >= '0' && p[3] <= '9' && p[4] >= '0' && p[4] <= '9' &&
+                p[6] >= '0' && p[6] <= '9' && p[7] >= '0' && p[7] <= '9' &&
+                p[8] >= '0' && p[8] <= '9' && p[9] >= '0' && p[9] <= '9') {
+                datePos = p;
                 break;
             }
         }
 
         TCHAR fileName[MAX_PATH] = {0};
-        if (dateSep) {
-            // dateSep points to space before date. Everything before is "filename size"
-            int beforeLen = (int)(dateSep - buf);
+        if (datePos) {
+            int beforeLen = (int)(datePos - buf);
             _tcsncpy(fileName, buf, beforeLen);
             fileName[beforeLen] = TEXT('\0');
             // Trim trailing spaces
-            while (beforeLen > 0 && fileName[beforeLen-1] == TEXT(' ')) {
+            while (beforeLen > 0 && fileName[beforeLen-1] == TEXT(' '))
                 fileName[--beforeLen] = TEXT('\0');
+            // Remove size from end: "NNN NNN NNN" (3 groups of digits)
+            TCHAR* last = fileName + beforeLen - 1;
+            // Walk back past digits
+            while (last > fileName && *last >= '0' && *last <= '9') last--;
+            if (*last == TEXT(' ')) {
+                // Check if this is part of size: should be preceded by digits
+                TCHAR* prev = last - 1;
+                while (prev > fileName && *prev >= '0' && *prev <= '9') prev--;
+                if (*prev == TEXT(' ')) {
+                    // Another space - walk back one more group
+                    TCHAR* prev2 = prev - 1;
+                    while (prev2 > fileName && *prev2 >= '0' && *prev2 <= '9') prev2--;
+                    if (*prev2 == TEXT(' ')) {
+                        // All 3 groups found, filename ends before first space of size
+                        *prev2 = TEXT('\0');
+                    } else {
+                        // Only 2 groups visible, remove 2 groups
+                        *prev = TEXT('\0');
+                    }
+                } else {
+                    // Only 1 group visible
+                    *last = TEXT('\0');
+                }
             }
         } else {
             _tcsncpy(fileName, buf, MAX_PATH - 1);
