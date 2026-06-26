@@ -1,11 +1,14 @@
-MediaShow2: LCLListBox 00000000003F0D32 LB_GETSELCOUNT=0
-MediaShow2: LCLListBox 00000000003F0D32 LB_GETCOUNT=8
-MediaShow2: LCLListBox 00000000003608EA LB_GETSELCOUNT=3
-MediaShow2: LCLListBox 00000000003608EA LB_GETCOUNT=9
+MediaShow2: LCLListBox 0000000000F60D92 LB_GETSELCOUNT=0
+MediaShow2: LCLListBox 0000000000F60D92 LB_GETCOUNT=8
+MediaShow2: LCLListBox 0000000000380F84 LB_GETSELCOUNT=3
+MediaShow2: LCLListBox 0000000000380F84 LB_GETCOUNT=13
 MediaShow2: Using LCLListBox sel=3
-MediaShow2: LB_GETTEXT[0]='03 - Regression.mp3 10 865 989 11.12.2023 19:14 -a--'
-MediaShow2: file[0]='f:\Music\_Doom\Aglo\2023 - Build Fear\03 - Regression.mp3 10 865 989 '
-MediaShow2: LB_GETTEXT[1]='04 - Relativity Undone.mp3 11 782 378 11.12.2023 19:14 -a--'
-MediaShow2: file[1]='f:\Music\_Doom\Aglo\2023 - Build Fear\04 - Relativity Undone.mp3 11 782 378 '
-MediaShow2: LB_GETTEXT[2]='05 - Shame as a Weapon.mp3 13 747 831 11.12.2023 19:14 -a--'
-MediaShow2: file[2]='f:\Music\_Doom\Aglo\2023 - Build Fear\05 - Shame as a Weapon.mp3 13 747 831 '
+MediaShow2: LB_GETTEXT[0]='02 - Arpadhazi Margit balladaja.mp3 12 681 905 02.10.2021 18:57 -a--'
+MediaShow2: datePos=000000000AC74ABE (found=1)
+MediaShow2: file[0]='f:\Music\_Folk\Dalriada\2012 - Jegbonto\02 - Arpadhazi Margit balladaja.mp3 12 681 905 '
+MediaShow2: LB_GETTEXT[1]='03 - Galamb.mp3 13 881 408 02.10.2021 18:57 -a--'
+MediaShow2: datePos=000000001409A536 (found=1)
+MediaShow2: file[1]='f:\Music\_Folk\Dalriada\2012 - Jegbonto\03 - Galamb.mp3 13 881 408 '
+MediaShow2: LB_GETTEXT[2]='04 - Vedj meg Lang! - 1. resz.mp3 11 339 207 02.10.2021 18:57 -a--'
+MediaShow2: datePos=0000000014022B1A (found=1)
+MediaShow2: file[2]='f:\Music\_Folk\Dalriada\2012 - Jegbonto\04 - Vedj meg Lang! - 1. resz.mp3 11 339 207 '

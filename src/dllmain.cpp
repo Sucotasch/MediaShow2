@@ -453,6 +453,10 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
             }
         }
 
+        TCHAR dbg2[256];
+        _sntprintf(dbg2, 256, TEXT("MediaShow2: datePos=%p (found=%d)\n"), datePos, datePos != NULL);
+        OutputDebugString(dbg2);
+
         TCHAR fileName[MAX_PATH] = {0};
         if (datePos) {
             int beforeLen = (int)(datePos - buf);
@@ -510,16 +514,22 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
 
     if (validCount == 0) return;
 
+    // Save fileDates before FreePlaylist destroys them
+    FILETIME* savedDates = state->fileDates;
+    state->fileDates = NULL;
     FreePlaylist(state);
     state->playlist      = files;
     state->playlistCount = validCount;
     state->playlistIndex = 0;
+    state->fileDates     = savedDates;
     for (int i = 0; i < validCount; i++) {
         if (_tcsicmp(files[i], state->filePath) == 0) {
             state->playlistIndex = i;
             break;
         }
     }
+    // Update showPlaylist based on current file type
+    state->showPlaylist = IsAudioOnly(state->filePath);
     UpdatePlaylist(state);
 }
 
