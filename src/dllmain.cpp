@@ -438,45 +438,37 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
         // Find last space before a digit group that looks like a size (large number)
         // The size always has at least 4 digits total (e.g. "1 234" or "12 345 678")
         // Strategy: scan backwards from end, find " DD.MM.YYYY HH:MM" and extract filename before size
-        TCHAR* nameEnd = buf + _tcslen(buf);  // default: full string
-
-        // Find date pattern - scan for DD.MM.YYYY or YYYY-MM-DD
-        for (TCHAR* p = buf; *p; p++) {
-            if ((p[0] >= TEXT('0') && p[0] <= TEXT('9') &&
-                 p[1] >= TEXT('0') && p[1] <= TEXT('9') &&
-                 p[2] == TEXT('.') &&
-                 p[3] >= TEXT('0') && p[3] <= TEXT('9') &&
-                 p[4] >= TEXT('0') && p[4] <= TEXT('9') &&
-                 p[5] == TEXT('.') &&
-                 p[6] >= TEXT('0') && p[6] <= TEXT('9') &&
-                 p[7] >= TEXT('0') && p[7] <= TEXT('9')) ||
-                (p[0] >= TEXT('0') && p[0] <= TEXT('9') &&
-                 p[1] >= TEXT('0') && p[1] <= TEXT('9') &&
-                 p[2] >= TEXT('0') && p[2] <= TEXT('9') &&
-                 p[3] >= TEXT('0') && p[3] <= TEXT('9') &&
-                 p[4] == TEXT('-') &&
-                 p[5] >= TEXT('0') && p[5] <= TEXT('9') &&
-                 p[6] >= TEXT('0') && p[6] <= TEXT('9') &&
-                 p[7] == TEXT('-'))) {
-                // Found date - now walk backwards to find filename end
-                TCHAR* q = p;
-                while (q > buf && *(q-1) == TEXT(' ')) q--;
-                // Walk further back past the size digits
-                while (q > buf && *(q-1) >= TEXT('0') && *(q-1) <= TEXT('9')) q--;
-                while (q > buf && *(q-1) == TEXT(' ')) q--;
-                // Now q points to end of filename
-                nameEnd = q;
+        // TC format: "filename size DD.MM.YYYY HH:MM -a--"
+        // Size is "NN NNN NNN" (digits with spaces). Date is DD.MM.YYYY.
+        // Find " DD.MM.YYYY " (space before date, space after date)
+        TCHAR* dateSep = NULL;
+        for (TCHAR* p = buf; p[9]; p++) {
+            if (p[0] == TEXT(' ') && p[10] == TEXT(' ') &&
+                p[3] == TEXT('.') && p[6] == TEXT('.') &&
+                p[1] >= '0' && p[1] <= '9' && p[2] >= '0' && p[2] <= '9' &&
+                p[4] >= '0' && p[4] <= '9' && p[5] >= '0' && p[5] <= '9' &&
+                p[7] >= '0' && p[7] <= '9' && p[8] >= '0' && p[8] <= '9') {
+                dateSep = p;
                 break;
             }
         }
 
+        TCHAR fileName[MAX_PATH] = {0};
+        if (dateSep) {
+            // dateSep points to space before date. Everything before is "filename size"
+            int beforeLen = (int)(dateSep - buf);
+            _tcsncpy(fileName, buf, beforeLen);
+            fileName[beforeLen] = TEXT('\0');
+            // Trim trailing spaces
+            while (beforeLen > 0 && fileName[beforeLen-1] == TEXT(' ')) {
+                fileName[--beforeLen] = TEXT('\0');
+            }
+        } else {
+            _tcsncpy(fileName, buf, MAX_PATH - 1);
+        }
+
         TCHAR fullPath[MAX_PATH];
-        int nameLen = (int)(nameEnd - buf);
-        _tcsncpy(fullPath, dir, MAX_PATH - 1);
-        int dirLen = (int)_tcslen(fullPath);
-        _tcsncpy(fullPath + dirLen, TEXT("\\"), MAX_PATH - dirLen - 1);
-        dirLen++;
-        _tcsncpy(fullPath + dirLen, buf, min(nameLen, MAX_PATH - dirLen - 1));
+        _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fileName);
 
         _sntprintf(dbg, 512, TEXT("MediaShow2: file[%d]='%s'\n"), i, fullPath);
         OutputDebugString(dbg);
