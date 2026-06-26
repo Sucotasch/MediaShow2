@@ -233,8 +233,8 @@ MediaShow2/
 ### Что реализовано (частично)
 1. **Воспроизведение:** Media Foundation (IMFPMediaPlayer) + DirectShow (IGraphBuilder) fallback — работает
 2. **Toolbar:** Play/Stop/Prev/Next/<</>> кнопки — работают
-3. **Seekbar:** TrackBar control — виден, НЕ работает
-4. **Volume slider:** TrackBar control — виден, НЕ работает
+3. **Seekbar:** TrackBar control — работает
+4. **Volume slider:** TrackBar control — работает
 5. **Status bar:** Win32 StatusBar — работает
 6. **Context menu:** WM_CONTEXTMENU — работает
 7. **Keyboard shortcuts:** Space, S, N, P, M, F11, Esc — работают
@@ -244,42 +244,25 @@ MediaShow2/
 11. **Dark mode:** через GetSysColor + lcp_darkmode — работает
 12. **ASLR + DEP:** CMAKE_SHARED_LINKER_FLAGS — работает
 13. **DPI awareness:** manifest — работает
+14. **Fullscreen:** F11 / двойной клик — работает
+15. **Aspect ratio:** letterboxing — работает
 
 ### Что НЕ реализовано
-1. **Seekbar** — виден, НЕ работает (критический баг)
-2. **Volume slider** — виден, НЕ работает (критический баг)
-3. **Плейлист из выделенных файлов TC** — механизм найден (LCLListBox + LB_GETTEXT), но парсинг имени файла сломан (прилипает размер). См. секцию "Плейлист из выделенных файлов"
-4. **Плейлист в центре окна** — при аудио центральная область должна показывать плейлист (как в оригинале), не popup
-5. **Сохранение соотношения сторон видео** — при растягивании окна видео искажается
-6. **Fullscreen режим**
-7. **Современный UI** — текущий interface примитивен
-8. **Плейлист с редактированием**
-9. **Информация о файле + теги** (Album, Track no, bitrate и т.д.)
-10. **Редактирование тегов**
-11. **Always On Top**
-12. **Close To Tray (фоновое воспроизведение)**
+1. **Плейлист из выделенных файлов TC** — механизм найден (LCLListBox + LB_GETTEXT), но парсинг имени файла сломан (прилипает размер), тип определяется неверно, даты пусты. См. секцию "Плейлист из выделенных файлов"
+2. **Плейлист в центре окна** — при аудио центральная область должна показывать плейлист (как в оригинале), не popup
+3. **Современный UI** — текущий interface примитивен
+4. **Плейлист с редактированием**
+5. **Информация о файле + теги** (Album, Track no, bitrate и т.д.)
+6. **Редактирование тегов**
+7. **Always On Top**
+8. **Close To Tray (фоновое воспроизведение)**
 
 ---
 
 ## 4. Проблемы и ограничения
 
-### Критическая: Seekbar и Volume не реагируют
-**Симптом:** TrackBar controls видны на экране, но не реагируют на клики мыши и перетаскивание. Происходит даже при воспроизведении аудио (нет видео окна).
-
-**Что проверено:**
-- TrackBar создаётся как child window hMainWnd: `WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS`
-- WM_HSCROLL обработчик проверяет `lParam == hSeekbar/hVolSlider`
-- Кнопки toolbar (тоже child windows hMainWnd) РАБОТАЮТ
-- Seekbar и volume позиционируются через UpdateLayout
-
-**Что НЕ проверено:**
-- Причина, по которой trackbar НЕ получает mouse input
-- Работает ли trackbar в изолированном тесте
-
-**Возможные причины:**
-1. MF player создаёт rendering window, перекрывающий trackbar
-2. Z-order окон — trackbar позади другого окна
-3. WC_STATIC для hVideoWnd перехватывает mouse events
+### Исправленные баги
+- **Seekbar/Volume:** Были исправлены (Defect #1: toolbar covers trackbars — исправлено через CCS_NORESIZE | CCS_NOPARENTALIGN)
 
 ### Плейлист из выделенных файлов
 
