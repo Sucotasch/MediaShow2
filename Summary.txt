@@ -17,6 +17,9 @@ Discoveries
    - ListNotificationReceived forwards WM_COMMAND from toolbar buttons
    - itm_next tells TC to switch to next file
    - Tab/arrows/F3 are consumed by TC — cannot intercept
+   - TC uses Lazarus/Free Pascal (NOT Delphi) — file panel is LCLListBox, not SysListView32
+   - LB_GETTEXT returns "filename size DD.MM.YYYY HH:MM attributes" format
+   - cm_CopyFullNamesToClip does NOT work during ListLoad (TC processes synchronously)
 6. Original MediaShow architecture:
    - Lister mode (F3): child window inside TC lister panel
    - Independent player: separate popup window
@@ -40,8 +43,9 @@ Working:
 - Clean startup layout and controls rendering
 - Aspect ratio preservation (letterboxing) in video viewport
 - Fullscreen mode toggle (F11/Double click)
+- TC file panel detection via LCLListBox + LB_GETSELCOUNT/LB_GETSELITEMS/LB_GETTEXT
 In progress / broken:
-- None
+- Selected files playlist: mechanism found (LCLListBox + LB_GETTEXT) but filename parsing broken (size sticks to name), type always "video", dates empty, playback stops after one file
 Not yet implemented:
 - Always On Top
 - Close To Tray (background playback)
