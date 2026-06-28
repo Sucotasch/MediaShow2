@@ -1828,37 +1828,114 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     state->playlistCount = 1;
     state->playlistIndex = 0;
 
-    // Append mode ON: load saved playlist first, then add new files
+    // Append mode ON: load saved playlist, add new files to it
     if (state->appendMode) {
         LoadPlaylist(state);
-        // Now add current files to the loaded playlist
+        // Add current file(s) to loaded playlist
         int oldCount = state->playlistCount;
-        RequestSelectedFiles(ParentWin, state);
-        // If no selection, scan directory and add
+        // Try to get selected files from TC
+        HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
+        if (hTC) {
+            EnumFindData fd = {0, 0};
+            EnumChildWindows(hTC, EnumFindLCLListBox, (LPARAM)&fd);
+            if (fd.result) {
+                int selCount = (int)SendMessage(fd.result, LB_GETSELCOUNT, 0, 0);
+                if (selCount > 0) {
+                    // Collect and append selected files (same logic as append mode F3)
+                    int* selItems = (int*)calloc(selCount, sizeof(int));
+                    SendMessage(fd.result, LB_GETSELITEMS, selCount, (LPARAM)selItems);
+                    TCHAR dir[MAX_PATH];
+                    _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
+                    TCHAR* ls = _tcsrchr(dir, TEXT('\\'));
+                    if (ls) *ls = 0;
+                    for (int i = 0; i < selCount; i++) {
+                        int len = (int)SendMessage(fd.result, LB_GETTEXTLEN, selItems[i], 0);
+                        if (len <= 0) continue;
+                        TCHAR* buf = (TCHAR*)calloc(len + 1, sizeof(TCHAR));
+                        SendMessage(fd.result, LB_GETTEXT, selItems[i], (LPARAM)buf);
+                        // Parse filename from TC format
+                        TCHAR* datePos = NULL;
+                        for (TCHAR* p = buf; p[9]; p++) {
+                            if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
+                                p[0] >= '0' && p[0] <= '9' && p[1] >= '0' && p[1] <= '9' &&
+                                p[3] >= '0' && p[3] <= '9' && p[4] >= '0' && p[4] <= '9' &&
+                                p[6] >= '0' && p[6] <= '9' && p[7] >= '0' && p[7] <= '9' &&
+                                p[8] >= '0' && p[8] <= '9' && p[9] >= '0' && p[9] <= '9') {
+                                datePos = p; break;
+                            }
+                        }
+                        TCHAR fn[MAX_PATH] = {0};
+                        if (datePos) {
+                            int bL = (int)(datePos - buf);
+                            _tcsncpy(fn, buf, bL); fn[bL] = TEXT('\0');
+                            while (bL > 0 && (fn[bL-1] == TEXT(' ') || fn[bL-1] == 0x00A0 || fn[bL-1] == 0x0009))
+                                fn[--bL] = TEXT('\0');
+                            TCHAR* pp = fn + bL - 1;
+                            while (pp > fn && *pp >= '0' && *pp <= '9') pp--;
+                            if (pp > fn && (*pp == TEXT(' ') || *pp == 0x00A0 || *pp == 0x0009)) pp--;
+                            else { pp = fn + bL - 1; }
+                            while (pp > fn && *pp >= '0' && *pp <= '9') pp--;
+                            if (pp > fn && (*pp == TEXT(' ') || *pp == 0x00A0 || *pp == 0x0009)) pp--;
+                            else { pp = fn + bL - 1; }
+                            while (pp > fn && *pp >= '0' && *pp <= '9') pp--;
+                            if (pp > fn && (*pp == TEXT(' ') || *pp == 0x00A0 || *pp == 0x0009)) pp--;
+                            else { pp = fn + bL - 1; }
+                            *(pp + 1) = TEXT('\0');
+                            while (bL > 0 && (fn[bL-1] == TEXT(' ') || fn[bL-1] == 0x00A0 || fn[bL-1] == 0x0009))
+                                fn[--bL] = TEXT('\0');
+                        } else {
+                            _tcsncpy(fn, buf, MAX_PATH - 1);
+                        }
+                        TCHAR fp[MAX_PATH];
+                        _sntprintf(fp, MAX_PATH, TEXT("%s\\%s"), dir, fn);
+                        TCHAR* dot = _tcsrchr(fn, TEXT('.'));
+                        if (!dot || !IsMediaFile(dot + 1)) { free(buf); continue; }
+                        // Append to playlist
+                        int newTotal = state->playlistCount + 1;
+                        TCHAR** np = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
+                        FILETIME* nd = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
+                        if (np && nd) {
+                            np[state->playlistCount] = _tcsdup(fp);
+                            WIN32_FILE_ATTRIBUTE_DATA fad;
+                            if (GetFileAttributesEx(fp, GetFileExInfoStandard, &fad))
+                                nd[state->playlistCount] = fad.ftLastWriteTime;
+                            state->playlist = np;
+                            state->fileDates = nd;
+                            state->playlistCount = newTotal;
+                        }
+                        free(buf);
+                    }
+                    free(selItems);
+                }
+            }
+        }
+        // If no selection and playlist didn't grow, scan directory
         if (state->playlistCount <= oldCount) {
             TCHAR dir[MAX_PATH];
             _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
-            TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
-            if (lastSlash) *lastSlash = 0;
+            TCHAR* ls = _tcsrchr(dir, TEXT('\\'));
+            if (ls) *ls = 0;
             TCHAR** files = NULL;
             FILETIME* dates = NULL;
             int count = 0;
             ScanDirectoryForMedia(dir, &files, &dates, &count);
             if (files && count > 0) {
                 int newTotal = state->playlistCount + count;
-                TCHAR** newPl = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
-                FILETIME* newDt = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
-                if (newPl && newDt) {
+                TCHAR** np = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
+                FILETIME* nd = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
+                if (np && nd) {
                     for (int i = 0; i < count; i++) {
-                        newPl[state->playlistCount + i] = files[i];
-                        newDt[state->playlistCount + i] = dates[i];
+                        np[state->playlistCount + i] = files[i];
+                        nd[state->playlistCount + i] = dates[i];
                     }
-                    state->playlist = newPl;
-                    state->fileDates = newDt;
+                    state->playlist = np;
+                    state->fileDates = nd;
                     state->playlistCount = newTotal;
                 }
             }
         }
+        UpdatePlaylist(state);
+        SavePlaylist(state);
     } else {
         // Append mode OFF: normal flow
         RequestSelectedFiles(ParentWin, state);
