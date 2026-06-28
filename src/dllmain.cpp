@@ -480,8 +480,12 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
         TCHAR fullPath[MAX_PATH];
         _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fileName);
 
-        _sntprintf(dbg, 512, TEXT("MediaShow2: file[%d]='%s'\n"), i, fullPath);
-        OutputDebugString(dbg);
+        // Skip unsupported formats
+        TCHAR* dot = _tcsrchr(fileName, TEXT('.'));
+        if (!dot || !IsMediaFile(dot + 1)) {
+            free(buf);
+            continue;
+        }
 
         files[validCount] = _tcsdup(fullPath);
 
@@ -1446,6 +1450,10 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     // Request selected files from TC via clipboard
     RequestSelectedFiles(ParentWin, state);
+
+    // If no files selected, scan directory for media files
+    if (state->playlistCount <= 1)
+        BuildPlaylist(state, NULL, FileToLoad);
 
     SetTimer(hWnd, 1, 500, NULL);
     UpdatePlaylist(state);
