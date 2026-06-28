@@ -18,6 +18,13 @@ A multimedia lister plugin for [Total Commander](https://www.ghisler.com/), rewr
 | AVI, MPG, MPEG, ASF, VOB | MP3, WAV, WMA, OGG, FLAC, AAC, OPUS |
 | MKV, WEBM, MP4, M4A, DAT | MIDI, MID, KAR, MP1, MP2 |
 
+### Playlist Management
+
+- **Delete** — remove selected track from playlist
+- **Ctrl+↑/↓** — reorder tracks in playlist
+- **Enter** — play selected track
+- **Click column header** — sort by #, Name, Type, or Date
+
 ## Building
 
 Requires Visual Studio 2022 with C++ Desktop workload.
