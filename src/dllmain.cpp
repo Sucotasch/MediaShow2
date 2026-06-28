@@ -1764,6 +1764,14 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         }
     }
 
+    // If append mode is OFF and old window exists, close it (replace playlist)
+    if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
+        PluginState* oldState = GetState(hLastPluginWnd);
+        if (oldState && !oldState->appendMode) {
+            PostMessage(hLastPluginWnd, WM_CLOSE, 0, 0);
+        }
+    }
+
     HWND hWnd = CreateWindowEx(0, TEXT("MediaShow2Main"), APP_NAME,
         WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
         0, 0, 100, 100,
