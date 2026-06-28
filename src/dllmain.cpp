@@ -1799,8 +1799,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     // Request selected files from TC via clipboard
     RequestSelectedFiles(ParentWin, state);
 
-    // Auto-load: try to restore saved playlist before directory scan
-    if (state->playlistCount <= 1)
+    // Auto-load: only on first launch (no existing window)
+    if (state->playlistCount <= 1 && !hLastPluginWnd)
         LoadPlaylist(state);
 
     // If still no playlist, scan directory for media files
