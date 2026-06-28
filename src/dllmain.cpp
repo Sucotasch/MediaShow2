@@ -927,7 +927,14 @@ static void PlayIndex(PluginState* state, int idx) {
             DSPlayer_Stop(state->pDSPlayer);
             hr = DSPlayer_Open(state->pDSPlayer, f);
             if (SUCCEEDED(hr)) DSPlayer_Play(state->pDSPlayer);
+        } else if (MFPlayer_HasVideo(state->pMFPlayer)) {
+            // Video: recreate to avoid EVR corruption
+            MFPlayer_Destroy(state->pMFPlayer);
+            state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+            hr = MFPlayer_Open(state->pMFPlayer, f);
+            if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         } else {
+            // Audio: Stop/Open/Play
             MFPlayer_Stop(state->pMFPlayer);
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);

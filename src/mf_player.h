@@ -18,6 +18,7 @@ HRESULT MFPlayer_SetVolume(MFPlayer* player, float volume);
 
 BOOL    MFPlayer_IsPlaying(MFPlayer* player);
 BOOL    MFPlayer_IsPaused(MFPlayer* player);
+BOOL    MFPlayer_HasVideo(MFPlayer* player);
 double  MFPlayer_GetDuration(MFPlayer* player);
 double  MFPlayer_GetPosition(MFPlayer* player);
 HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* height);

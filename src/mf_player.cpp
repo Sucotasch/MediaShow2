@@ -134,6 +134,7 @@ HRESULT MFPlayer_Stop(MFPlayer* player) {
     tagMFPlayer* p = (tagMFPlayer*)player;
     if (!p->pPlayer) return S_FALSE;
     HRESULT hr = p->pPlayer->Stop();
+    Sleep(50);
     if (SUCCEEDED(hr)) {
         InterlockedExchange(&p->isPlaying, FALSE);
         InterlockedExchange(&p->isPaused,  FALSE);
@@ -178,6 +179,11 @@ BOOL MFPlayer_IsPlaying(MFPlayer* player) {
 BOOL MFPlayer_IsPaused(MFPlayer* player) {
     if (!player) return FALSE;
     return (BOOL)InterlockedCompareExchange(&((tagMFPlayer*)player)->isPaused, 0, 0);
+}
+
+BOOL MFPlayer_HasVideo(MFPlayer* player) {
+    if (!player) return FALSE;
+    return ((tagMFPlayer*)player)->pVideoCtrl != NULL;
 }
 
 double MFPlayer_GetDuration(MFPlayer* player) {
