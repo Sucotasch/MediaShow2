@@ -1828,16 +1828,43 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     state->playlistCount = 1;
     state->playlistIndex = 0;
 
-    // Request selected files from TC via clipboard
-    RequestSelectedFiles(ParentWin, state);
-
-    // Auto-load: only on first launch (no existing window)
-    if (state->playlistCount <= 1 && !hLastPluginWnd)
+    // Append mode ON: load saved playlist first, then add new files
+    if (state->appendMode) {
         LoadPlaylist(state);
-
-    // If still no playlist, scan directory for media files
-    if (state->playlistCount <= 1)
-        BuildPlaylist(state, NULL, FileToLoad);
+        // Now add current files to the loaded playlist
+        int oldCount = state->playlistCount;
+        RequestSelectedFiles(ParentWin, state);
+        // If no selection, scan directory and add
+        if (state->playlistCount <= oldCount) {
+            TCHAR dir[MAX_PATH];
+            _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
+            TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
+            if (lastSlash) *lastSlash = 0;
+            TCHAR** files = NULL;
+            FILETIME* dates = NULL;
+            int count = 0;
+            ScanDirectoryForMedia(dir, &files, &dates, &count);
+            if (files && count > 0) {
+                int newTotal = state->playlistCount + count;
+                TCHAR** newPl = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
+                FILETIME* newDt = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
+                if (newPl && newDt) {
+                    for (int i = 0; i < count; i++) {
+                        newPl[state->playlistCount + i] = files[i];
+                        newDt[state->playlistCount + i] = dates[i];
+                    }
+                    state->playlist = newPl;
+                    state->fileDates = newDt;
+                    state->playlistCount = newTotal;
+                }
+            }
+        }
+    } else {
+        // Append mode OFF: normal flow
+        RequestSelectedFiles(ParentWin, state);
+        if (state->playlistCount <= 1)
+            BuildPlaylist(state, NULL, FileToLoad);
+    }
 
     // Update showPlaylist based on first file in playlist
     if (state->playlistCount > 0)
