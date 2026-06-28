@@ -965,7 +965,8 @@ static void PlayIndex(PluginState* state, int idx) {
     UpdateLayout(state);
     UpdateStatus(state);
     UpdateSeekbar(state);
-    state->switchInProgress = FALSE;
+    // Keep switchInProgress=TRUE, reset after cooldown timer
+    SetTimer(state->hMainWnd, IDT_COOLDOWN, 500, NULL);
 }
 
 /* -----------------------------------------------------------------------
@@ -1205,6 +1206,8 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         if (hdr->code == NM_DBLCLK) {
             NMITEMACTIVATE* nm = (NMITEMACTIVATE*)lParam;
             if (nm->iItem >= 0 && nm->iItem < state->playlistCount) {
+                KillTimer(state->hMainWnd, IDT_COOLDOWN);
+                state->switchInProgress = FALSE;
                 PlayIndex(state, nm->iItem);
             }
             return 0;
@@ -1240,6 +1243,8 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             } else if (kd->wVKey == VK_RETURN) {
                 int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
                 if (idx >= 0) {
+                    KillTimer(state->hMainWnd, IDT_COOLDOWN);
+                    state->switchInProgress = FALSE;
                     PlayIndex(state, idx);
                 }
             } else if (kd->wVKey == VK_UP && (GetKeyState(VK_CONTROL) & 0x8000)) {
@@ -1342,6 +1347,8 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         }
 
         case IDM_STOP:
+            KillTimer(hWnd, IDT_COOLDOWN);
+            state->switchInProgress = FALSE;
             if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
             else                      MFPlayer_Stop(state->pMFPlayer);
             state->isPlaying = FALSE;
@@ -1457,7 +1464,10 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
     /* ---- Timer: position polling ---- */
     case WM_TIMER:
-        if (wParam == 1 && state) {
+        if (wParam == IDT_COOLDOWN && state) {
+            KillTimer(hWnd, IDT_COOLDOWN);
+            state->switchInProgress = FALSE;
+        } else if (wParam == 1 && state) {
             if (state->duration <= 0) {
                 state->duration = state->useDirectShow ?
                     DSPlayer_GetDuration(state->pDSPlayer) :
@@ -1651,6 +1661,8 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 void __stdcall ListCloseWindow(HWND ListWin) {
     PluginState* state = GetState(ListWin);
     if (state) {
+        KillTimer(ListWin, IDT_COOLDOWN);
+        state->switchInProgress = FALSE;
         if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
         else                      MFPlayer_Stop(state->pMFPlayer);
     }

@@ -42,4 +42,6 @@
 #define IDM_FULLSCREEN        4051
 #define IDM_REPEAT            4052
 
+#define IDT_COOLDOWN          2
+
 #endif /* PLUGIN_API_H */
