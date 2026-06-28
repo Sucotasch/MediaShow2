@@ -87,6 +87,10 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
 
     MFCallback* cb = new MFCallback(p);
     HRESULT hr = MFPCreateMediaPlayer(filePath, FALSE, MFP_OPTION_NONE, cb, p->hVideoWnd, &p->pPlayer);
+    // Retry once on failure (MF pipeline may not be fully ready on first call)
+    if (FAILED(hr)) {
+        hr = MFPCreateMediaPlayer(filePath, FALSE, MFP_OPTION_NONE, cb, p->hVideoWnd, &p->pPlayer);
+    }
     cb->Release();
     if (FAILED(hr)) return hr;
 
