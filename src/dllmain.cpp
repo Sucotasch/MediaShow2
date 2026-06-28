@@ -332,6 +332,8 @@ static void SortPlaylist(PluginState* state) {
    ----------------------------------------------------------------------- */
 static void UpdatePlaylist(PluginState* state) {
     if (!state || !state->hPlaylist) return;
+    // Save scroll position BEFORE clearing the list
+    int savedTop = ListView_GetTopIndex(state->hPlaylist);
     SendMessage(state->hPlaylist, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(state->hPlaylist);
 
@@ -379,7 +381,6 @@ static void UpdatePlaylist(PluginState* state) {
     }
 
     if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount) {
-        int savedTop = ListView_GetTopIndex(state->hPlaylist);
         ListView_SetItemState(state->hPlaylist, state->playlistIndex,
             LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
         // Restore scroll position (SetItemState with FOCUSED scrolls to item)
