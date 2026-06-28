@@ -333,7 +333,11 @@ static void SortPlaylist(PluginState* state) {
 static void UpdatePlaylist(PluginState* state) {
     if (!state || !state->hPlaylist) return;
     // Save scroll position BEFORE clearing the list
-    int savedTop = ListView_GetTopIndex(state->hPlaylist);
+    SCROLLINFO si = {0};
+    si.cbSize = sizeof(si);
+    si.fMask = SIF_POS;
+    GetScrollInfo(state->hPlaylist, SB_VERT, &si);
+    int savedPos = si.nPos;
     SendMessage(state->hPlaylist, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(state->hPlaylist);
 
@@ -383,12 +387,12 @@ static void UpdatePlaylist(PluginState* state) {
     if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount) {
         ListView_SetItemState(state->hPlaylist, state->playlistIndex,
             LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-        // Restore scroll position (SetItemState with FOCUSED scrolls to item)
-        if (savedTop >= 0)
-            ListView_EnsureVisible(state->hPlaylist, savedTop, FALSE);
     }
 
     SendMessage(state->hPlaylist, WM_SETREDRAW, TRUE, 0);
+    // Restore exact scroll position after redraw
+    si.nPos = savedPos;
+    SetScrollInfo(state->hPlaylist, SB_VERT, &si, TRUE);
     InvalidateRect(state->hPlaylist, NULL, TRUE);
 }
 
