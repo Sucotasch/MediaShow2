@@ -55,6 +55,7 @@ struct PluginState {
     double videoAr;          // native video aspect ratio (0 = unknown)
     int   volume;
     int   repeatMode;       // 0=off, 1=all, 2=one
+    BOOL  switchInProgress; // lock: ignore Next/Prev while switching
     TCHAR** playlist;
     FILETIME* fileDates;
     int   playlistCount;
@@ -913,6 +914,8 @@ static void ToggleFullscreen(PluginState* state) {
    ----------------------------------------------------------------------- */
 static void PlayIndex(PluginState* state, int idx) {
     if (!state || idx < 0 || idx >= state->playlistCount) return;
+    if (state->switchInProgress) return;
+    state->switchInProgress = TRUE;
 
     // Skip unplayable files (up to playlistCount attempts to avoid infinite loop)
     for (int attempt = 0; attempt < state->playlistCount; attempt++) {
@@ -955,6 +958,7 @@ static void PlayIndex(PluginState* state, int idx) {
     UpdateLayout(state);
     UpdateStatus(state);
     UpdateSeekbar(state);
+    state->switchInProgress = FALSE;
 }
 
 /* -----------------------------------------------------------------------
@@ -1286,6 +1290,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     /* ---- Track-end notification from EventThread (Defect #4 fix) ---- */
     case WM_PLAYER_TRACK_END: {
         if (!state) break;
+        if (state->switchInProgress) return 0;
         state->isPlaying = FALSE;
         state->isPaused  = FALSE;
         if (state->repeatMode == 2) {
