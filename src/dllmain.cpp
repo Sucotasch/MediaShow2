@@ -1345,7 +1345,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             break;
 
         case IDM_PREV:
-            if (state->playlist && state->playlistCount > 0) {
+            if (!state->switchInProgress && state->playlist && state->playlistCount > 0) {
                 int idx = state->playlistIndex - 1;
                 if (idx < 0) idx = (state->repeatMode == 1) ? state->playlistCount - 1 : 0;
                 PlayIndex(state, idx);
@@ -1353,7 +1353,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             break;
 
         case IDM_NEXT:
-            if (state->playlist && state->playlistCount > 0) {
+            if (!state->switchInProgress && state->playlist && state->playlistCount > 0) {
                 int idx = state->playlistIndex + 1;
                 if (idx >= state->playlistCount) idx = (state->repeatMode == 1) ? 0 : state->playlistCount - 1;
                 PlayIndex(state, idx);
