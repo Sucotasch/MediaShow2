@@ -561,20 +561,21 @@ static void UpdateLayout(PluginState* state) {
     const int ctrlH   = 28;    // trackbar height
     const int statusH = 22;    // status bar height
     const int tbW     = 220;   // fixed toolbar width
+    const int pad     = 4;     // padding from window edge
 
     if (state->hToolbar) {
-        MoveWindow(state->hToolbar, 0, 0, tbW, tbH, TRUE);
+        MoveWindow(state->hToolbar, pad, pad, tbW, tbH, TRUE);
         SendMessage(state->hToolbar, TB_AUTOSIZE, 0, 0);
     }
 
     // Seekbar: fills space between toolbar and volume slider
-    int seekX = tbW + 4;
+    int seekX = pad + tbW + 4;
     int volW  = 140;
-    int volX  = w - volW - 4;
+    int volX  = w - volW - pad;
     int seekW = volX - seekX - 4;
     if (seekW < 40) seekW = 40;
 
-    int trackY = (tbH - ctrlH) / 2;
+    int trackY = pad + (tbH - ctrlH) / 2;
     if (state->hSeekbar)
         SetWindowPos(state->hSeekbar, HWND_TOP, seekX, trackY, seekW, ctrlH, SWP_NOZORDER);
     if (state->hVolSlider)
@@ -583,7 +584,7 @@ static void UpdateLayout(PluginState* state) {
     if (state->hStatus)
         MoveWindow(state->hStatus, 0, h - statusH, w, statusH, TRUE);
 
-    int contentH = h - tbH - statusH;
+    int contentH = h - tbH - pad - statusH;
     if (contentH < 0) contentH = 0;
 
     // Видео скрыто когда плейлист виден
@@ -609,12 +610,12 @@ static void UpdateLayout(PluginState* state) {
         int vx = (w - vw) / 2;
         int vy = (contentH - vh) / 2;
 
-        MoveWindow(state->hVideoWnd, vx, tbH + vy, vw, vh, TRUE);
+        MoveWindow(state->hVideoWnd, vx, tbH + pad + vy, vw, vh, TRUE);
     }
 
     // Плейлист поверх видео — на всю content area, Z-order top
     if (state->hPlaylist) {
-        MoveWindow(state->hPlaylist, 0, tbH, w, contentH, TRUE);
+        MoveWindow(state->hPlaylist, pad, tbH + pad, w - pad * 2, contentH, TRUE);
         if (state->showPlaylist)
             SetWindowPos(state->hPlaylist, HWND_TOP, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE);
