@@ -238,35 +238,37 @@ MediaShow2/
 3. **Seekbar:** TrackBar control — работает
 4. **Volume slider:** TrackBar control + subclass (VolSliderProc) — работает
 5. **Status bar:** Win32 StatusBar — работает
-6. **Context menu:** WM_CONTEXTMENU — работает (Play, Stop, Prev, Next, Vol, Mute, Seek, Fullscreen, Playlist, Info, Repeat, About)
+6. **Context menu:**_WM_CONTEXTMENU — работает (Play, Stop, Prev, Next, Vol, Mute, Seek, Fullscreen, Playlist, Info, Repeat, Append, Clear, About)
 7. **Mouse wheel:** volume повсюду + playlist scroll (когда плейлист виден)
 8. **Auto-advance:** Repeat mode управляет навигацией (Off/All/One) — работает
 9. **Playlist:** запрос выделенных файлов через LCLListBox + парсинг LB_GETTEXT + фильтрация форматов + directory scan fallback — работает
-10. **Dark mode:** через GetSysColor + lcp_darkmode/lcp_darkmodenative + ApplyTheme (DarkMode_Explorer) — работает
-11. **ASLR + DEP:** /DYNAMICBASE /NXCOMPAT в CMakeLists.txt — работает
-12. **DPI awareness:** app.manifest существует, но отключён в resources.rc (SxS dependency)
-13. **Fullscreen:** двойной клик + отдельное окно — работает
-14. **Aspect ratio:** letterboxing через UpdateLayout + ToggleFullscreen — работает
-15. **Playlist sorting:** клик по колонке → SortPlaylist (qsort_s) — работает
-16. **Playlist editing:** Delete (удаление), Enter (проигрывание), Ctrl+Up/Down (перемещение) — работают
-17. **Volume persistence:** SaveVolume/LoadVolume через INI — работает
-18. **Repeat mode:** Off/All/One, кнопка в toolbar, persists в INI — работает
-19. **ListSendCommand:** lc_newparams (dark mode toggle) + lc_setpercent (seek) — работают
-20. **Theme support:** DarkMode_Explorer для ListView, hIconFont (Segoe UI Symbol) — работает
-21. **Play button:** запускает выделенный файл в плейлисте — работает
-22. **Padding:** 4px отступ от краёв окна для всех контролов — работает
-23. **Video switching:** recreation MFPlayer + Sleep(50) + 500ms cooldown — нет зависаний
-24. **Skip unplayable files:** автоматический переход к следующему при ошибке открытия
-25. **UpdatePlaylist optimization:** WM_SETREDRAW для больших плейлистов
+10. **Append mode:** "Add files to playlist" — context menu toggle. При F3: добавляет файлы в существующий плейлист (включая первый запуск с auto-load). При append OFF: закрывает старую вкладку, создаёт новую.
+11. **Auto-save/autoload:** плейлист сохраняется в `MediaShow2_playlist.txt` при любых изменениях. Auto-load при первом запуске (если append mode OFF).
+12. **Clear playlist:** context menu, удаляет файл сохранения.
+13. **Dark mode:** через GetSysColor + lcp_darkmode/lcp_darkmodenative + ApplyTheme (DarkMode_Explorer) — работает
+14. **ASLR + DEP:** /DYNAMICBASE /NXCOMPAT в CMakeLists.txt — работает
+15. **DPI awareness:** app.manifest существует, но отключён в resources.rc (SxS dependency)
+16. **Fullscreen:** двойной клик + отдельное окно — работает
+17. **Aspect ratio:** letterboxing через UpdateLayout + ToggleFullscreen — работает
+18. **Playlist sorting:** клик по колонке → SortPlaylist (qsort_s) — работает
+19. **Playlist editing:** Delete (удаление), Enter (проигрывание), Ctrl+Up/Down (перемещение) — работают
+20. **Volume persistence:** SaveVolume/LoadVolume через INI — работает
+21. **Repeat mode:** Off/All/One, кнопка в toolbar, persists в INI — работает
+22. **ListSendCommand:** lc_newparams (dark mode toggle) + lc_setpercent (seek) — работают
+23. **Theme support:** DarkMode_Explorer для ListView, hIconFont (Segoe UI Symbol) — работает
+24. **Play button:** запускает выделенный файл в плейлисте — работает
+25. **Padding:** 4px отступ от краёв окна для всех контролов — работает
+26. **Video switching:** recreation MFPlayer + Sleep(50) + 500ms cooldown — нет зависаний
+27. **Skip unplayable files:** автоматический переход к следующему при ошибке открытия
+28. **UpdatePlaylist optimization:** WM_SETREDRAW для больших плейлистов
 
 ### Что НЕ реализовано
 1. **Современный UI** — текущий интерфейс примитивен
-2. **Сохранение/загрузка плейлиста** — нет Drag & Drop, нет сохранения в файл
-3. **Информация о файле + теги** (Album, Track no, bitrate и т.д.) — только MessageBox с именем и длительностью
-4. **Редактирование тегов**
-5. **Always On Top**
-6. **Close To Tray (фоновое воспроизведение)**
-7. **Keyboard shortcuts** — TC lister перехватывает大部分 клавиш (стрелки, L, M, I, F11). Работают только Space и S.
+2. **Информация о файле + теги** (Album, Track no, bitrate и т.д.) — только MessageBox с именем и длительностью
+3. **Редактирование тегов**
+4. **Always On Top**
+5. **Close To Tray (фоновое воспроизведение)**
+6. **Keyboard shortcuts** — TC lister перехватывает大部分 клавиш (стрелки, L, M, I, F11). Работают только Space и S.
 
 ---
 
@@ -280,6 +282,9 @@ MediaShow2/
 - **Directory scan fallback:** Если выделенных файлов нет, BuildPlaylist сканирует директорию.
 - **Фильтрация форматов:** RequestSelectedFiles пропускает неподдерживаемые расширения.
 - **Dead code:** Удалён дублирующийся LVN_COLUMNCLICK handler и двойная инициализация sortColumn.
+- **Video hang:** Recreation MFPlayer + Sleep(50) + 500ms cooldown при переключении видео.
+- **Append mode:** При F3 файлы добавляются в текущий плейлист (включая первый запуск с auto-load).
+- **Auto-save/autoload:** Плейлист сохраняется в файл и восстанавливается при перезапуске.
 
 ### Плейлист из выделенных файлов
 
@@ -404,12 +409,17 @@ Chars:      обычный   пробел цифры NBP  цифры NBP  циф
 
 | Файл | Описание | Строки |
 |------|----------|--------|
-| `src/dllmain.cpp` | Основной код: TC API, UI, playlist, repeat, video switch, defect fixes | ~1730 |
+| `src/dllmain.cpp` | Основной код: TC API, UI, playlist, repeat, video switch, append mode, auto-save, defect fixes | ~2000 |
 | `src/mf_player.cpp` | Media Foundation движок + HasVideo detection | ~280 |
 | `src/ds_player.cpp` | DirectShow fallback | ~250 |
 | `src/plugin_api.h` | TC WLX SDK + ID контролов | ~45 |
 | `src/resources.rc` | Ресурсы (манифест отключён) | ~4 |
 | `src/app.manifest` | DPI awareness (НЕ подключён) | — |
+
+### Известные ограничения
+- **TC lister tabs:** F3 всегда создаёт новую вкладку (WLX API limitation). Append mode закрывает старую вкладку через PostMessage(ParentWin, WM_CLOSE).
+- **Keyboard shortcuts:** TC перехватывает大部分 клавиш. Работают только Space и S.
+- **DPI awareness:** app.manifest отключён из-за SxS dependency.
 
 ---
 

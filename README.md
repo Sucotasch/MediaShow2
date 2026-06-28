@@ -5,10 +5,12 @@ A multimedia lister plugin for [Total Commander](https://www.ghisler.com/), rewr
 ## Features
 
 - **Video/Audio playback** via Media Foundation (primary) with DirectShow fallback
-- **Playlist** from TC selected files or directory scan
+- **Playlist** from TC selected files, directory scan, or auto-load from previous session
+- **Append mode** — add files to existing playlist via F3 without creating new tabs
 - **Fullscreen** (double-click) with aspect ratio preservation
 - **Dark mode** support via TC's `lcp_darkmode`
-- **Context menu** with playback controls
+- **Repeat** — Off / All / One (toolbar button, persisted)
+- **Context menu** with all playback controls
 - **64-bit** support (`.wlx64`)
 
 ### Supported Formats
@@ -24,6 +26,15 @@ A multimedia lister plugin for [Total Commander](https://www.ghisler.com/), rewr
 - **Ctrl+↑/↓** — reorder tracks in playlist
 - **Enter** — play selected track
 - **Click column header** — sort by #, Name, Type, or Date
+- **Auto-save** — playlist saved to file on every change
+- **Auto-load** — restored on first plugin launch
+- **Clear** — context menu clears playlist and saved file
+
+### Append Mode
+
+Toggle via context menu ("Add files to playlist"):
+- **ON:** F3 adds files to existing playlist (never replaces)
+- **OFF:** F3 closes old tab, creates new with new files
 
 ## Building
 
@@ -50,7 +61,7 @@ Double-click `MediaShow2.wlx` (x86) or `MediaShow2.wlx64` (x64) in Total Command
 
 ```
 src/
-├── dllmain.cpp       — Plugin entry, TC API, UI, playlist management
+├── dllmain.cpp       — Plugin entry, TC API, UI, playlist, append mode
 ├── mf_player.h/cpp   — Media Foundation playback engine
 ├── ds_player.h/cpp   — DirectShow fallback engine
 ├── plugin_api.h      — TC WLX SDK constants and control IDs
@@ -66,25 +77,43 @@ sdk/
 
 The plugin implements the standard TC lister interface:
 - `ListLoad` / `ListLoadW` — Called on F3, creates the player window
-- `ListLoadNext` — Called for file navigation
+- `ListLoadNext` — Called for file navigation (n/p keys)
 - `ListCloseWindow` — Cleanup
 - `ListGetDetectString` — File type detection
 - `ListSendCommand` — Handles `lc_newparams` (dark mode) and `lc_setpercent` (seek)
 
+### Append Mode Implementation
+
+When append mode is ON and F3 is pressed:
+1. Find existing plugin window via static HWND
+2. Collect selected files from TC's LCLListBox
+3. Append to existing playlist
+4. Close the new lister tab via `PostMessage(ParentWin, WM_CLOSE)`
+5. Return NULL
+
+**TC limitation:** F3 always creates a new lister tab (WLX API). Append mode closes it immediately after file collection.
+
 ### Selected Files from TC
 
-TC passes selected files to the plugin via `LCLListBox` (TC uses Lazarus/Free Pascal). The plugin reads file information using `LB_GETTEXT`, which returns strings in the format:
+TC passes selected files via `LCLListBox` (Lazarus/Free Pascal). The plugin reads using `LB_GETTEXT`:
 
 ```
 filename.ext NNN NBSP NNN NBSP NNN TAB DD.MM.YYYY HH:MM -a--
 ```
 
-**Important:** TC uses non-breaking spaces (U+00A0) between file size digit groups and TAB (U+0009) after the last group — not regular ASCII spaces.
+**Important:** TC uses non-breaking spaces (U+00A0) between file size groups and TAB (U+0009) after the last group.
 
 ### Playback Engines
 
 - **Media Foundation** (Windows 7+): Handles AVI, MP4, MP3, WAV, AAC, WMA natively
-- **DirectShow** (fallback): Handles OGG, FLAC, MKV, DAT, VOB, MIDI and other formats not supported by MF
+- **DirectShow** (fallback): Handles OGG, FLAC, MKV, DAT, VOB, MIDI
+
+### Video Switching
+
+Rapid Next/Prev on video files can cause MF pipeline corruption. Solution:
+- Recreate MFPlayer on each video switch
+- Sleep(50) after MF Stop for async cleanup
+- 500ms cooldown timer prevents rapid switching
 
 ## Credits
 
