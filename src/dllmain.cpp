@@ -1286,8 +1286,14 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         WORD cmd = LOWORD(wParam);
         switch (cmd) {
 
-        case IDM_PLAY:
-            if (state->isPlaying && !state->isPaused) {
+        case IDM_PLAY: {
+            // Check if a different file is selected in playlist
+            int selIdx = -1;
+            if (state->hPlaylist)
+                selIdx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
+            if (selIdx >= 0 && selIdx < state->playlistCount && selIdx != state->playlistIndex) {
+                PlayIndex(state, selIdx);
+            } else if (state->isPlaying && !state->isPaused) {
                 if (state->useDirectShow) DSPlayer_Pause(state->pDSPlayer);
                 else                      MFPlayer_Pause(state->pMFPlayer);
                 state->isPaused = TRUE;
@@ -1299,6 +1305,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             }
             UpdateStatus(state);
             break;
+        }
 
         case IDM_STOP:
             if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
