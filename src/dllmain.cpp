@@ -1757,6 +1757,38 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                             free(files); free(dates);
                         }
                     }
+                } else {
+                    // No selection: scan directory and add all media files
+                    TCHAR dir[MAX_PATH];
+                    _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
+                    TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
+                    if (lastSlash) *lastSlash = 0;
+
+                    TCHAR** files = NULL;
+                    FILETIME* dates = NULL;
+                    int count = 0;
+                    ScanDirectoryForMedia(dir, &files, &dates, &count);
+
+                    if (files && count > 0) {
+                        int oldCount = existState->playlistCount;
+                        int newTotal = oldCount + count;
+                        TCHAR** newPl = (TCHAR**)realloc(existState->playlist, newTotal * sizeof(TCHAR*));
+                        FILETIME* newDt = (FILETIME*)realloc(existState->fileDates, newTotal * sizeof(FILETIME));
+                        if (newPl && newDt) {
+                            for (int i = 0; i < count; i++) {
+                                newPl[oldCount + i] = files[i];
+                                newDt[oldCount + i] = dates[i];
+                            }
+                            existState->playlist = newPl;
+                            existState->fileDates = newDt;
+                            existState->playlistCount = newTotal;
+                            UpdatePlaylist(existState);
+                            SavePlaylist(existState);
+                        } else {
+                            for (int i = 0; i < count; i++) free(files[i]);
+                            free(files); free(dates);
+                        }
+                    }
                 }
             }
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
