@@ -823,6 +823,8 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
     AppendMenu(hMenu, MF_STRING, IDM_FULLSCREEN,
         state->isFullscreen ? TEXT("Exit Fullscreen") : TEXT("Fullscreen"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, state->appendMode ? MF_CHECKED : MF_STRING,
+        IDM_APPENDMODE, TEXT("Add files to playlist"));
     AppendMenu(hMenu, MF_STRING, IDM_CLEARPLAYLIST, TEXT("Clear playlist"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
@@ -1521,6 +1523,11 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             UpdateToolbarRepeat(state);
             break;
 
+        case IDM_APPENDMODE:
+            state->appendMode = !state->appendMode;
+            SaveAppendMode(state);
+            break;
+
         case IDM_CLEARPLAYLIST:
             ClearPlaylist(state);
             UpdatePlaylist(state);
@@ -1638,6 +1645,125 @@ HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
 
 HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     RegisterMainWndClass();
+
+    // Append mode: find existing plugin window and add files to its playlist
+    HWND hExisting = FindWindow(TEXT("MediaShow2Main"), NULL);
+    if (hExisting) {
+        PluginState* existState = GetState(hExisting);
+        if (existState && existState->appendMode) {
+            // Get selected files from TC
+            HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
+            if (hTC) {
+                EnumFindData fd = {0, 0};
+                EnumChildWindows(hTC, EnumFindLCLListBox, (LPARAM)&fd);
+                if (fd.result) {
+                    HWND hListBox = fd.result;
+                    int selCount = (int)SendMessage(hListBox, LB_GETSELCOUNT, 0, 0);
+                    if (selCount > 0) {
+                        // Collect selected files
+                        int* selItems = (int*)calloc(selCount, sizeof(int));
+                        SendMessage(hListBox, LB_GETSELITEMS, selCount, (LPARAM)selItems);
+
+                        TCHAR dir[MAX_PATH];
+                        _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
+                        TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
+                        if (lastSlash) *lastSlash = 0;
+
+                        int allocSize = selCount;
+                        TCHAR** files = (TCHAR**)calloc(allocSize, sizeof(TCHAR*));
+                        FILETIME* dates = (FILETIME*)calloc(allocSize, sizeof(FILETIME));
+                        int validCount = 0;
+
+                        for (int i = 0; i < selCount; i++) {
+                            int len = (int)SendMessage(hListBox, LB_GETTEXTLEN, selItems[i], 0);
+                            if (len <= 0) continue;
+                            TCHAR* buf = (TCHAR*)calloc(len + 1, sizeof(TCHAR));
+                            SendMessage(hListBox, LB_GETTEXT, selItems[i], (LPARAM)buf);
+
+                            // Parse TC format
+                            TCHAR* datePos = NULL;
+                            for (TCHAR* p = buf; p[9]; p++) {
+                                if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
+                                    p[0] >= '0' && p[0] <= '9' && p[1] >= '0' && p[1] <= '9' &&
+                                    p[3] >= '0' && p[3] <= '9' && p[4] >= '0' && p[4] <= '9' &&
+                                    p[6] >= '0' && p[6] <= '9' && p[7] >= '0' && p[7] <= '9' &&
+                                    p[8] >= '0' && p[8] <= '9' && p[9] >= '0' && p[9] <= '9') {
+                                    datePos = p;
+                                    break;
+                                }
+                            }
+
+                            TCHAR fileName[MAX_PATH] = {0};
+                            if (datePos) {
+                                int beforeLen = (int)(datePos - buf);
+                                _tcsncpy(fileName, buf, beforeLen);
+                                fileName[beforeLen] = TEXT('\0');
+                                while (beforeLen > 0 && (fileName[beforeLen-1] == TEXT(' ') || fileName[beforeLen-1] == 0x00A0 || fileName[beforeLen-1] == 0x0009))
+                                    fileName[--beforeLen] = TEXT('\0');
+                                TCHAR* p = fileName + beforeLen - 1;
+                                while (p > fileName && *p >= '0' && *p <= '9') p--;
+                                if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
+                                else { p = fileName + beforeLen - 1; }
+                                while (p > fileName && *p >= '0' && *p <= '9') p--;
+                                if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
+                                else { p = fileName + beforeLen - 1; }
+                                while (p > fileName && *p >= '0' && *p <= '9') p--;
+                                if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
+                                else { p = fileName + beforeLen - 1; }
+                                *(p + 1) = TEXT('\0');
+                                while (beforeLen > 0 && (fileName[beforeLen-1] == TEXT(' ') || fileName[beforeLen-1] == 0x00A0 || fileName[beforeLen-1] == 0x0009))
+                                    fileName[--beforeLen] = TEXT('\0');
+                            } else {
+                                _tcsncpy(fileName, buf, MAX_PATH - 1);
+                            }
+
+                            TCHAR fullPath[MAX_PATH];
+                            _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fileName);
+
+                            TCHAR* dot = _tcsrchr(fileName, TEXT('.'));
+                            if (!dot || !IsMediaFile(dot + 1)) { free(buf); continue; }
+
+                            files[validCount] = _tcsdup(fullPath);
+                            WIN32_FILE_ATTRIBUTE_DATA fad;
+                            if (GetFileAttributesEx(fullPath, GetFileExInfoStandard, &fad))
+                                dates[validCount] = fad.ftLastWriteTime;
+                            validCount++;
+                            free(buf);
+                        }
+                        free(selItems);
+
+                        // Append to existing playlist
+                        if (validCount > 0) {
+                            int oldCount = existState->playlistCount;
+                            int newTotal = oldCount + validCount;
+                            TCHAR** newPl = (TCHAR**)realloc(existState->playlist, newTotal * sizeof(TCHAR*));
+                            FILETIME* newDt = (FILETIME*)realloc(existState->fileDates, newTotal * sizeof(FILETIME));
+                            if (newPl && newDt) {
+                                for (int i = 0; i < validCount; i++) {
+                                    newPl[oldCount + i] = files[i];
+                                    newDt[oldCount + i] = dates[i];
+                                }
+                                existState->playlist = newPl;
+                                existState->fileDates = newDt;
+                                existState->playlistCount = newTotal;
+                                UpdatePlaylist(existState);
+                                SavePlaylist(existState);
+                            } else {
+                                for (int i = 0; i < validCount; i++) free(files[i]);
+                                free(files);
+                                free(dates);
+                            }
+                        } else {
+                            free(files);
+                            free(dates);
+                        }
+                    }
+                }
+            }
+            return NULL;  // Don't create new tab
+        }
+    }
+
     HWND hWnd = CreateWindowEx(0, TEXT("MediaShow2Main"), APP_NAME,
         WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
         0, 0, 100, 100,
