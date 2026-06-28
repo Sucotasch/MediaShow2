@@ -378,9 +378,11 @@ static void UpdatePlaylist(PluginState* state) {
         ListView_SetItemText(state->hPlaylist, i, 3, dateBuf);
     }
 
-    if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount)
+    if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount) {
         ListView_SetItemState(state->hPlaylist, state->playlistIndex,
-            LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+            LVIS_SELECTED, LVIS_SELECTED);
+        ListView_EnsureVisible(state->hPlaylist, state->playlistIndex, FALSE);
+    }
 
     SendMessage(state->hPlaylist, WM_SETREDRAW, TRUE, 0);
     InvalidateRect(state->hPlaylist, NULL, TRUE);
