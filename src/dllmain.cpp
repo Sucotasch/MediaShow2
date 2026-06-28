@@ -627,35 +627,18 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
 
     if (validCount == 0) return;
 
-    if (state->appendMode) {
-        // Append: add new files to existing playlist
-        int oldCount = state->playlistCount;
-        int newTotal = oldCount + validCount;
-        TCHAR** newPl = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
-        FILETIME* newDt = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
-        if (!newPl || !newDt) { free(files); free(state->fileDates); return; }
-        for (int i = 0; i < validCount; i++) {
-            newPl[oldCount + i] = files[i];
-            newDt[oldCount + i] = state->fileDates[i];
-        }
-        state->playlist = newPl;
-        state->fileDates = newDt;
-        state->playlistCount = newTotal;
-        // Don't change playlistIndex — keep current position
-    } else {
-        // Replace: clear old playlist, set new
-        FILETIME* savedDates = state->fileDates;
-        state->fileDates = NULL;
-        FreePlaylist(state);
-        state->playlist      = files;
-        state->playlistCount = validCount;
-        state->playlistIndex = 0;
-        state->fileDates     = savedDates;
-        for (int i = 0; i < validCount; i++) {
-            if (_tcsicmp(files[i], state->filePath) == 0) {
-                state->playlistIndex = i;
-                break;
-            }
+    // Replace: clear old playlist, set new
+    FILETIME* savedDates = state->fileDates;
+    state->fileDates = NULL;
+    FreePlaylist(state);
+    state->playlist      = files;
+    state->playlistCount = validCount;
+    state->playlistIndex = 0;
+    state->fileDates     = savedDates;
+    for (int i = 0; i < validCount; i++) {
+        if (_tcsicmp(files[i], state->filePath) == 0) {
+            state->playlistIndex = i;
+            break;
         }
     }
     // Update showPlaylist based on current file type
@@ -840,8 +823,6 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
     AppendMenu(hMenu, MF_STRING, IDM_FULLSCREEN,
         state->isFullscreen ? TEXT("Exit Fullscreen") : TEXT("Fullscreen"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-    AppendMenu(hMenu, state->appendMode ? MF_CHECKED : MF_STRING,
-        IDM_APPENDMODE, TEXT("Add files to playlist"));
     AppendMenu(hMenu, MF_STRING, IDM_CLEARPLAYLIST, TEXT("Clear playlist"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
@@ -1540,11 +1521,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             UpdateToolbarRepeat(state);
             break;
 
-        case IDM_APPENDMODE:
-            state->appendMode = !state->appendMode;
-            SaveAppendMode(state);
-            break;
-
         case IDM_CLEARPLAYLIST:
             ClearPlaylist(state);
             UpdatePlaylist(state);
@@ -1690,14 +1666,13 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     // Request selected files from TC via clipboard
     RequestSelectedFiles(ParentWin, state);
 
-    // If no files selected, scan directory for media files
+    // Auto-load: try to restore saved playlist before directory scan
+    if (state->playlistCount <= 1)
+        LoadPlaylist(state);
+
+    // If still no playlist, scan directory for media files
     if (state->playlistCount <= 1)
         BuildPlaylist(state, NULL, FileToLoad);
-
-    // Auto-load: if only 1 file, try to restore saved playlist
-    if (state->playlistCount <= 1) {
-        LoadPlaylist(state);
-    }
 
     // Update showPlaylist based on first file in playlist
     if (state->playlistCount > 0)
