@@ -232,44 +232,51 @@ MediaShow2/
 └── MediaShow2.wlx64        — готовый плагин
 ```
 
-### Что реализовано (частично)
+### Что реализовано
 1. **Воспроизведение:** Media Foundation (IMFPMediaPlayer) + DirectShow (IGraphBuilder) fallback — работает
-2. **Toolbar:** Play/Stop/Prev/Next/Rewind/Forward/Playlist (9 кнопок, Unicode-глифы) — работают
+2. **Toolbar:** Play/Stop/Prev/Next/Rewind/Forward/Repeat/Playlist (10 кнопок, Unicode-глифы) — работают
 3. **Seekbar:** TrackBar control — работает
 4. **Volume slider:** TrackBar control + subclass (VolSliderProc) — работает
 5. **Status bar:** Win32 StatusBar — работает
-6. **Context menu:** WM_CONTEXTMENU — работает (Play, Stop, Prev, Next, Vol, Mute, Seek, Fullscreen, Playlist, Info, About)
-7. **Keyboard shortcuts:** Space, S, ←/→ (Seek ±10s), ↑/↓ (Volume ±5%), M, F11, L, I, Esc — работают
-8. **Mouse wheel:** volume повсюду + playlist scroll (когда плейлист виден). Seek через wheel убран (Defect #3 fix)
-9. **Auto-advance:** itm_next — работает (Defect #7 fix: правильная маршрутизация через hParentWnd)
-10. **Playlist:** запрос выделенных файлов через LCLListBox + парсинг LB_GETTEXT — работает (commit d3cfa82)
-11. **Dark mode:** через GetSysColor + lcp_darkmode/lcp_darkmodenative + ApplyTheme (DarkMode_Explorer) — работает
-12. **ASLR + DEP:** /DYNAMICBASE /NXCOMPAT в CMakeLists.txt — работает
-13. **DPI awareness:** app.manifest существует, но отключён в resources.rc (SxS dependency). Контролы используют фиксированные размеры.
-14. **Fullscreen:** F11 / двойной клик + отдельное окно (Defect #15 fix) — работает
-15. **Aspect ratio:** letterboxing через UpdateLayout + ToggleFullscreen — работает
-16. **Playlist sorting:** клик по колонке → SortPlaylist (qsort_s) — работает
-17. **Playlist editing:** Delete (удаление), Enter (проигрывание), Ctrl+Up/Down (перемещение) — работают
-18. **Volume persistence:** SaveVolume/LoadVolume через INI — работает
-19. **Defect tracking:** систематические комментарии Defect #1–#21 — в коде
-20. **ListSendCommand:** lc_newparams (dark mode toggle) + lc_setpercent (seek) — работают
-21. **Theme support:** DarkMode_Explorer для ListView, hIconFont (Segoe UI Symbol) — работает
+6. **Context menu:** WM_CONTEXTMENU — работает (Play, Stop, Prev, Next, Vol, Mute, Seek, Fullscreen, Playlist, Info, Repeat, About)
+7. **Mouse wheel:** volume повсюду + playlist scroll (когда плейлист виден)
+8. **Auto-advance:** Repeat mode управляет навигацией (Off/All/One) — работает
+9. **Playlist:** запрос выделенных файлов через LCLListBox + парсинг LB_GETTEXT + фильтрация форматов + directory scan fallback — работает
+10. **Dark mode:** через GetSysColor + lcp_darkmode/lcp_darkmodenative + ApplyTheme (DarkMode_Explorer) — работает
+11. **ASLR + DEP:** /DYNAMICBASE /NXCOMPAT в CMakeLists.txt — работает
+12. **DPI awareness:** app.manifest существует, но отключён в resources.rc (SxS dependency)
+13. **Fullscreen:** двойной клик + отдельное окно — работает
+14. **Aspect ratio:** letterboxing через UpdateLayout + ToggleFullscreen — работает
+15. **Playlist sorting:** клик по колонке → SortPlaylist (qsort_s) — работает
+16. **Playlist editing:** Delete (удаление), Enter (проигрывание), Ctrl+Up/Down (перемещение) — работают
+17. **Volume persistence:** SaveVolume/LoadVolume через INI — работает
+18. **Repeat mode:** Off/All/One, кнопка в toolbar, persists в INI — работает
+19. **ListSendCommand:** lc_newparams (dark mode toggle) + lc_setpercent (seek) — работают
+20. **Theme support:** DarkMode_Explorer для ListView, hIconFont (Segoe UI Symbol) — работает
+21. **Play button:** запускает выделенный файл в плейлисте — работает
+22. **Padding:** 4px отступ от краёв окна для всех контролов — работает
 
 ### Что НЕ реализовано
 1. **Современный UI** — текущий интерфейс примитивен
-2. **Плейлист:** нет Drag & Drop, нет сохранения/загрузки файлов плейлиста (Random/Repeat не реализованы)
+2. **Сохранение/загрузка плейлиста** — нет Drag & Drop, нет сохранения в файл
 3. **Информация о файле + теги** (Album, Track no, bitrate и т.д.) — только MessageBox с именем и длительностью
 4. **Редактирование тегов**
 5. **Always On Top**
 6. **Close To Tray (фоновое воспроизведение)**
+7. **Keyboard shortcuts** — TC lister перехватывает大部分 клавиш (стрелки, L, M, I, F11). Работают только Space и S.
 
 ---
 
 ## 4. Проблемы и ограничения
 
 ### Исправленные баги
-- **Seekbar/Volume:** Были исправлены (Defect #1: toolbar covers trackbars — исправлено через CCS_NORESIZE | CCS_NOPARENTALIGN)
-- **Плейлист из выделенных файлов:** Парсинг LB_GETTEXT исправлен (commit d3cfa82). TC использует NBSP (U+00A0) между группами цифр размера и TAB (U+0009) после последней группы — эти символы добавлены в проверку.
+- **Seekbar/Volume:** Defect #1: toolbar covers trackbars — исправлено через CCS_NORESIZE | CCS_NOPARENTALIGN
+- **Плейлист из выделенных файлов:** Парсинг LB_GETTEXT исправлен (commit d3cfa82). TC использует NBSP (U+00A0) между группами цифр размера и TAB (U+0009) после последней группы.
+- **Плейлист скрывается при клике на аудио:** Убрана принудительная установка `showPlaylist = FALSE` в NM_DBLCLK и VK_RETURN. PlayIndex управляет видимостью на основе типа файла.
+- **Play не запускает выделенный файл:** IDM_PLAY теперь проверяет выделение в плейлисте и запускает другой файл если выделен.
+- **Directory scan fallback:** Если выделенных файлов нет, BuildPlaylist сканирует директорию.
+- **Фильтрация форматов:** RequestSelectedFiles пропускает неподдерживаемые расширения.
+- **Dead code:** Удалён дублирующийся LVN_COLUMNCLICK handler и двойная инициализация sortColumn.
 
 ### Плейлист из выделенных файлов
 
@@ -358,23 +365,27 @@ Chars:      обычный   пробел цифры NBP  цифры NBP  циф
 
 ### Элементы управления
 - **Транспорт:** Play/Pause (▶/⏸), Stop (■), Prev (◄◄), Next (►►)
-- **Seekbar:** Горизонтальный TrackBar, tooltip с временем при наведении
-- **Volume slider:** Вертикальный TrackBar справа, mouse wheel = громкость
-- **Info bar:** Название файла, длительность, кодек, битрейт
-- **Playlist panel:** Список файлов с возможностью добавления/удаления/перемещения
+- **Seekbar:** Горизонтальный TrackBar
+- **Volume slider:** TrackBar справа, mouse wheel = громкость
+- **Repeat:** ○ (Off) / ↻ (All) / ↻₁ (One) — кнопка в toolbar, переключает по клику
+- **Playlist:** кнопка ☰ — toggle видимости плейлиста
+- **Info bar:** Название файла, длительность, громкость, статус
 
 ### Клавиатура
-| Действие | Клавиша |
-|----------|---------|
-| Play/Pause | Пробел |
-| Stop | S |
-| Seek ±10с | ←/→ |
-| Volume ±5% | ↑/↓ |
-| Mute | M |
-| Fullscreen | F11 |
-| Playlist | L |
-| File Info | I |
-| Close | Esc |
+
+**Важно:** TC lister перехватывает大部分 клавиш (стрелки, Tab, F3, L, M, I, F11). Работают только Space (play/pause) и S (stop). Остальные функции доступны через context menu (клик мышкой).
+
+| Действие | Клавиша | Статус |
+|----------|---------|--------|
+| Play/Pause | Пробел | Работает |
+| Stop | S | Работает |
+| Seek ±10с | ←/→ | Не работает (TC) |
+| Volume ±5% | ↑/↓ | Не работает (TC) |
+| Mute | M | Не работает (TC) |
+| Fullscreen | F11 | Не работает (TC) |
+| Playlist | L | Не работает (TC) |
+| File Info | I | Не работает (TC) |
+| Close | Esc | Работает |
 
 ### Mouse
 | Действие | Гест |
@@ -390,17 +401,12 @@ Chars:      обычный   пробел цифры NBP  цифры NBP  циф
 
 | Файл | Описание | Строки |
 |------|----------|--------|
-| `src/dllmain.cpp` | Основной код: TC API, UI, playlist, defect fixes | ~1642 |
+| `src/dllmain.cpp` | Основной код: TC API, UI, playlist, repeat, defect fixes | ~1680 |
 | `src/mf_player.cpp` | Media Foundation движок | ~272 |
 | `src/ds_player.cpp` | DirectShow fallback | ~250 |
-| `src/plugin_api.h` | TC WLX SDK + ID контролов | ~44 |
+| `src/plugin_api.h` | TC WLX SDK + ID контролов | ~45 |
 | `src/resources.rc` | Ресурсы (манифест отключён) | ~4 |
 | `src/app.manifest` | DPI awareness (НЕ подключён) | — |
-| `MediaShow2.wlx64` | Готовый плагин | 14.7KB |
-
-**Известные баги в коде:**
-- **Дублирующийся LVN_COLUMNCLICK handler** — строки 1148–1160 и 1162–1174 в dllmain.cpp полностью идентичны. Второй обработчик недостижим.
-- **Двойная инициализация sortColumn** — строки 999–1000: `state->sortColumn = -1; state->sortColumn = -1;`
 
 ---
 
