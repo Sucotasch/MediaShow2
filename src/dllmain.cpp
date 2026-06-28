@@ -1755,16 +1755,9 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     }
                 }
             }
-            // Destroy TC's lister tab by returning NULL, but TC will try next plugin.
-            // Instead: create a throwaway window, let TC use it, then destroy it.
-            HWND hThrowaway = CreateWindowEx(0, TEXT("MediaShow2Main"), APP_NAME,
-                WS_CHILD | WS_VISIBLE, 0, 0, 1, 1,
-                ParentWin, (HMENU)IDC_MAIN, GetModuleHandle(0), NULL);
-            if (hThrowaway) {
-                // Schedule destruction after TC finishes setup
-                PostMessage(hThrowaway, WM_CLOSE, 0, 0);
-            }
-            return hThrowaway ? hThrowaway : hLastPluginWnd;
+            // Close TC's lister tab: PostMessage WM_CLOSE to ParentWin
+            PostMessage(ParentWin, WM_CLOSE, 0, 0);
+            return NULL;
         }
     }
 
