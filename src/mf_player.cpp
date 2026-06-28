@@ -134,7 +134,6 @@ HRESULT MFPlayer_Stop(MFPlayer* player) {
     tagMFPlayer* p = (tagMFPlayer*)player;
     if (!p->pPlayer) return S_FALSE;
     HRESULT hr = p->pPlayer->Stop();
-    Sleep(50); // Allow async stop to complete before release
     if (SUCCEEDED(hr)) {
         InterlockedExchange(&p->isPlaying, FALSE);
         InterlockedExchange(&p->isPaused,  FALSE);
