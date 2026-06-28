@@ -54,6 +54,7 @@ struct PluginState {
     double position;
     double videoAr;          // native video aspect ratio (0 = unknown)
     int   volume;
+    int   repeatMode;       // 0=off, 1=all, 2=one
     TCHAR** playlist;
     FILETIME* fileDates;
     int   playlistCount;
@@ -106,6 +107,26 @@ static void SaveVolume(PluginState* state) {
 static int LoadVolume(void) {
     if (iniPath[0] == 0) return 80;
     return (int)GetPrivateProfileInt(TEXT("MediaShow2"), TEXT("Volume"), 80, iniPath);
+}
+
+static void SaveRepeatMode(PluginState* state) {
+    if (!state || iniPath[0] == 0) return;
+    TCHAR buf[16];
+    _sntprintf(buf, 16, TEXT("%d"), state->repeatMode);
+    WritePrivateProfileString(TEXT("MediaShow2"), TEXT("RepeatMode"), buf, iniPath);
+}
+
+static int LoadRepeatMode(void) {
+    if (iniPath[0] == 0) return 1;
+    return (int)GetPrivateProfileInt(TEXT("MediaShow2"), TEXT("RepeatMode"), 1, iniPath);
+}
+
+static const TCHAR* GetRepeatLabel(int mode) {
+    switch (mode) {
+    case 1:  return L"\u21BB";     // ↻ Repeat All
+    case 2:  return L"\u21BB\u2081"; // ↻₁ Repeat One
+    default: return L"\u25CB";     // ○ Off
+    }
 }
 
 /* -----------------------------------------------------------------------
@@ -600,6 +621,25 @@ static void UpdateLayout(PluginState* state) {
     }
 }
 
+static void UpdateToolbarRepeat(PluginState* state) {
+    if (!state || !state->hToolbar) return;
+    // Find repeat button by ID and update its text
+    int count = (int)SendMessage(state->hToolbar, TB_BUTTONCOUNT, 0, 0);
+    for (int i = 0; i < count; i++) {
+        TBBUTTONINFO tbi = {0};
+        tbi.cbSize = sizeof(TBBUTTONINFO);
+        tbi.dwMask = TBIF_COMMAND | TBIF_TEXT;
+        TCHAR text[32];
+        tbi.pszText = text;
+        tbi.cchText = 32;
+        if (SendMessage(state->hToolbar, TB_GETBUTTONINFO, IDM_REPEAT, (LPARAM)&tbi) >= 0) {
+            _tcscpy(text, GetRepeatLabel(state->repeatMode));
+            SendMessage(state->hToolbar, TB_SETBUTTONINFO, IDM_REPEAT, (LPARAM)&tbi);
+            break;
+        }
+    }
+}
+
 static void UpdateStatus(PluginState* state) {
     if (!state || !state->hStatus) return;
     TCHAR buf[512];
@@ -681,6 +721,10 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
         IDM_SHOWPLAYLIST, TEXT("Show/Hide Playlist"));
     AppendMenu(hMenu, MF_STRING, IDM_FILEINFO, TEXT("File Info"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    const TCHAR* repeatText[] = { TEXT("Repeat: Off"), TEXT("Repeat: All"), TEXT("Repeat: One") };
+    AppendMenu(hMenu, state->repeatMode ? MF_CHECKED : MF_STRING,
+        IDM_REPEAT, repeatText[state->repeatMode]);
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_ABOUT, TEXT("About MediaShow2"));
     TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_NONOTIFY, x, y, 0, state->hMainWnd, NULL);
     DestroyMenu(hMenu);
@@ -735,9 +779,10 @@ static void CreateControls(PluginState* state) {
             { I_IMAGENONE, IDM_SEEK_BACK, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23EA" }, // ⏪ Rewind
             { I_IMAGENONE, IDM_SEEK_FWD,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u23E9" }, // ⏩ Forward
             { 0,           0,             TBSTATE_ENABLED, BTNS_SEP,                                    {0}, 0, 0 },
+            { I_IMAGENONE, IDM_REPEAT,    TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u21BB" }, // ↻ Repeat
             { I_IMAGENONE, IDM_SHOWPLAYLIST, TBSTATE_ENABLED, BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT, {0}, 0, (INT_PTR)L"\u2630" }, // ☰ Playlist
         };
-        SendMessage(state->hToolbar, TB_ADDBUTTONS, 9, (LPARAM)buttons);
+        SendMessage(state->hToolbar, TB_ADDBUTTONS, 10, (LPARAM)buttons);
         SendMessage(state->hToolbar, TB_AUTOSIZE, 0, 0);
     }
 
@@ -984,6 +1029,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         state->hMainWnd = hWnd;
         // Defect #2 fix: load persisted volume; don't hardcode 80 here
         state->volume   = LoadVolume();
+        state->repeatMode = LoadRepeatMode();
         state->sortColumn = -1;
         state->hFont = CreateFont(
             -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -1018,6 +1064,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         state->pDSPlayer = DSPlayer_Create(state->hVideoWnd, OnMFEnd, state);
 
         CreateControls(state);
+        UpdateToolbarRepeat(state);
         return 0;
     }
 
@@ -1221,13 +1268,17 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         if (!state) break;
         state->isPlaying = FALSE;
         state->isPaused  = FALSE;
-        if (state->playlist && state->playlistIndex < state->playlistCount - 1) {
+        if (state->repeatMode == 2) {
+            // Repeat One: restart current track
+            PlayIndex(state, state->playlistIndex);
+        } else if (state->repeatMode == 1 && state->playlist && state->playlistCount > 0) {
+            // Repeat All: wrap to beginning
+            PlayIndex(state, (state->playlistIndex + 1) % state->playlistCount);
+        } else if (state->playlist && state->playlistIndex < state->playlistCount - 1) {
+            // Normal: play next
             PlayIndex(state, state->playlistIndex + 1);
-        } else {
-            // Defect #7 fix: itm_next in LOWORD, sent to TC parent window
-            PostMessage(state->hParentWnd, WM_COMMAND,
-                MAKELONG(itm_next, 0), (LPARAM)hWnd);
         }
+        // Off: stop (do nothing)
         return 0;
     }
 
@@ -1262,13 +1313,19 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             break;
 
         case IDM_PREV:
-            if (state->playlist && state->playlistIndex > 0)
-                PlayIndex(state, state->playlistIndex - 1);
+            if (state->playlist && state->playlistCount > 0) {
+                int idx = state->playlistIndex - 1;
+                if (idx < 0) idx = (state->repeatMode == 1) ? state->playlistCount - 1 : 0;
+                PlayIndex(state, idx);
+            }
             break;
 
         case IDM_NEXT:
-            if (state->playlist && state->playlistIndex < state->playlistCount - 1)
-                PlayIndex(state, state->playlistIndex + 1);
+            if (state->playlist && state->playlistCount > 0) {
+                int idx = state->playlistIndex + 1;
+                if (idx >= state->playlistCount) idx = (state->repeatMode == 1) ? 0 : state->playlistCount - 1;
+                PlayIndex(state, idx);
+            }
             break;
 
         case IDM_VOL_UP:
@@ -1312,6 +1369,12 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         // Defect #15 fix
         case IDM_FULLSCREEN:
             ToggleFullscreen(state);
+            break;
+
+        case IDM_REPEAT:
+            state->repeatMode = (state->repeatMode + 1) % 3;
+            SaveRepeatMode(state);
+            UpdateToolbarRepeat(state);
             break;
 
         case IDM_SHOWPLAYLIST:

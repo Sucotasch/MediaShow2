@@ -40,5 +40,6 @@
 #define IDM_SEEK_BACK         4043
 #define IDM_SHOWPLAYLIST      4044
 #define IDM_FULLSCREEN        4051
+#define IDM_REPEAT            4052
 
 #endif /* PLUGIN_API_H */
