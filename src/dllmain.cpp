@@ -332,6 +332,7 @@ static void SortPlaylist(PluginState* state) {
    ----------------------------------------------------------------------- */
 static void UpdatePlaylist(PluginState* state) {
     if (!state || !state->hPlaylist) return;
+    SendMessage(state->hPlaylist, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(state->hPlaylist);
 
     if (!state->playlist || state->playlistCount == 0) {
@@ -341,6 +342,8 @@ static void UpdatePlaylist(PluginState* state) {
         TCHAR empty[] = TEXT("(empty)");
         lvi.pszText = empty;
         ListView_InsertItem(state->hPlaylist, &lvi);
+        SendMessage(state->hPlaylist, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(state->hPlaylist, NULL, TRUE);
         return;
     }
 
@@ -378,6 +381,9 @@ static void UpdatePlaylist(PluginState* state) {
     if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount)
         ListView_SetItemState(state->hPlaylist, state->playlistIndex,
             LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+
+    SendMessage(state->hPlaylist, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(state->hPlaylist, NULL, TRUE);
 }
 
 /* -----------------------------------------------------------------------
