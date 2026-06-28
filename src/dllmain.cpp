@@ -1760,7 +1760,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     }
                 }
             }
-            return NULL;  // Don't create new tab
+            return hLastPluginWnd;  // Reuse existing window, prevent new tab
         }
     }
 
