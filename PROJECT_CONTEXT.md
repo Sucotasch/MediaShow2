@@ -255,6 +255,9 @@ MediaShow2/
 20. **Theme support:** DarkMode_Explorer для ListView, hIconFont (Segoe UI Symbol) — работает
 21. **Play button:** запускает выделенный файл в плейлисте — работает
 22. **Padding:** 4px отступ от краёв окна для всех контролов — работает
+23. **Video switching:** recreation MFPlayer + Sleep(50) + 500ms cooldown — нет зависаний
+24. **Skip unplayable files:** автоматический переход к следующему при ошибке открытия
+25. **UpdatePlaylist optimization:** WM_SETREDRAW для больших плейлистов
 
 ### Что НЕ реализовано
 1. **Современный UI** — текущий интерфейс примитивен
@@ -401,8 +404,8 @@ Chars:      обычный   пробел цифры NBP  цифры NBP  циф
 
 | Файл | Описание | Строки |
 |------|----------|--------|
-| `src/dllmain.cpp` | Основной код: TC API, UI, playlist, repeat, defect fixes | ~1680 |
-| `src/mf_player.cpp` | Media Foundation движок | ~272 |
+| `src/dllmain.cpp` | Основной код: TC API, UI, playlist, repeat, video switch, defect fixes | ~1730 |
+| `src/mf_player.cpp` | Media Foundation движок + HasVideo detection | ~280 |
 | `src/ds_player.cpp` | DirectShow fallback | ~250 |
 | `src/plugin_api.h` | TC WLX SDK + ID контролов | ~45 |
 | `src/resources.rc` | Ресурсы (манифест отключён) | ~4 |
