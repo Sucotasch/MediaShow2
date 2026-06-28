@@ -379,9 +379,12 @@ static void UpdatePlaylist(PluginState* state) {
     }
 
     if (state->playlistIndex >= 0 && state->playlistIndex < state->playlistCount) {
+        int savedTop = ListView_GetTopIndex(state->hPlaylist);
         ListView_SetItemState(state->hPlaylist, state->playlistIndex,
-            LVIS_SELECTED, LVIS_SELECTED);
-        ListView_EnsureVisible(state->hPlaylist, state->playlistIndex, FALSE);
+            LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        // Restore scroll position (SetItemState with FOCUSED scrolls to item)
+        if (savedTop >= 0)
+            ListView_EnsureVisible(state->hPlaylist, savedTop, FALSE);
     }
 
     SendMessage(state->hPlaylist, WM_SETREDRAW, TRUE, 0);
