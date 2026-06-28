@@ -663,19 +663,19 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
     AppendMenu(hMenu, MF_STRING, IDM_PREV, TEXT("Previous file"));
     AppendMenu(hMenu, MF_STRING, IDM_NEXT, TEXT("Next file"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-    AppendMenu(hMenu, MF_STRING, IDM_VOL_UP,   TEXT("Volume Up\t\u2191"));
-    AppendMenu(hMenu, MF_STRING, IDM_VOL_DOWN, TEXT("Volume Down\t\u2193"));
-    AppendMenu(hMenu, state->isMuted ? MF_CHECKED : MF_STRING, IDM_MUTE, TEXT("Mute\tM"));
+    AppendMenu(hMenu, MF_STRING, IDM_VOL_UP,   TEXT("Volume Up"));
+    AppendMenu(hMenu, MF_STRING, IDM_VOL_DOWN, TEXT("Volume Down"));
+    AppendMenu(hMenu, state->isMuted ? MF_CHECKED : MF_STRING, IDM_MUTE, TEXT("Mute"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-    AppendMenu(hMenu, MF_STRING, IDM_SEEK_FWD,  TEXT("Forward 10s\t\u2192"));
-    AppendMenu(hMenu, MF_STRING, IDM_SEEK_BACK, TEXT("Back 10s\t\u2190"));
+    AppendMenu(hMenu, MF_STRING, IDM_SEEK_FWD,  TEXT("Forward 10s"));
+    AppendMenu(hMenu, MF_STRING, IDM_SEEK_BACK, TEXT("Back 10s"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_FULLSCREEN,
-        state->isFullscreen ? TEXT("Exit Fullscreen\tF11") : TEXT("Fullscreen\tF11"));
+        state->isFullscreen ? TEXT("Exit Fullscreen") : TEXT("Fullscreen"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
-        IDM_SHOWPLAYLIST, TEXT("Show/Hide Playlist\tL"));
-    AppendMenu(hMenu, MF_STRING, IDM_FILEINFO, TEXT("File Info\tI"));
+        IDM_SHOWPLAYLIST, TEXT("Show/Hide Playlist"));
+    AppendMenu(hMenu, MF_STRING, IDM_FILEINFO, TEXT("File Info"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_ABOUT, TEXT("About MediaShow2"));
     TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_NONOTIFY, x, y, 0, state->hMainWnd, NULL);
@@ -1122,8 +1122,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             NMITEMACTIVATE* nm = (NMITEMACTIVATE*)lParam;
             if (nm->iItem >= 0 && nm->iItem < state->playlistCount) {
                 PlayIndex(state, nm->iItem);
-                state->showPlaylist = FALSE;
-                UpdateLayout(state);
             }
             return 0;
         }

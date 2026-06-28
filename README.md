@@ -6,9 +6,9 @@ A multimedia lister plugin for [Total Commander](https://www.ghisler.com/), rewr
 
 - **Video/Audio playback** via Media Foundation (primary) with DirectShow fallback
 - **Playlist** from TC selected files or directory scan
-- **Fullscreen** (F11 / double-click) with aspect ratio preservation
+- **Fullscreen** (double-click) with aspect ratio preservation
 - **Dark mode** support via TC's `lcp_darkmode`
-- **Keyboard shortcuts** and context menu
+- **Context menu** with playback controls
 - **64-bit** support (`.wlx64`)
 
 ### Supported Formats
@@ -17,20 +17,6 @@ A multimedia lister plugin for [Total Commander](https://www.ghisler.com/), rewr
 |-------|-------|
 | AVI, MPG, MPEG, ASF, VOB | MP3, WAV, WMA, OGG, FLAC, AAC, OPUS |
 | MKV, WEBM, MP4, M4A, DAT | MIDI, MID, KAR, MP1, MP2 |
-
-### Keyboard Shortcuts
-
-| Action | Key |
-|--------|-----|
-| Play/Pause | Space |
-| Stop | S |
-| Seek ±10s | ←/→ |
-| Volume ±5% | ↑/↓ |
-| Mute | M |
-| Fullscreen | F11 |
-| Toggle Playlist | L |
-| File Info | I |
-| Close | Esc |
 
 ## Building
 
