@@ -981,7 +981,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         // Defect #2 fix: load persisted volume; don't hardcode 80 here
         state->volume   = LoadVolume();
         state->sortColumn = -1;
-        state->sortColumn = -1;
         state->hFont = CreateFont(
             -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -1126,20 +1125,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 state->showPlaylist = FALSE;
                 UpdateLayout(state);
             }
-            return 0;
-        }
-
-        if (hdr->code == LVN_COLUMNCLICK) {
-            NMLISTVIEW* nmlv = (NMLISTVIEW*)lParam;
-            int col = nmlv->iSubItem;
-            if (col == state->sortColumn)
-                state->sortAscending = !state->sortAscending;
-            else {
-                state->sortColumn = col;
-                state->sortAscending = TRUE;
-            }
-            SortPlaylist(state);
-            UpdatePlaylist(state);
             return 0;
         }
 
