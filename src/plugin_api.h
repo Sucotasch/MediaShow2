@@ -41,6 +41,8 @@
 #define IDM_SHOWPLAYLIST      4044
 #define IDM_FULLSCREEN        4051
 #define IDM_REPEAT            4052
+#define IDM_APPENDMODE        4053
+#define IDM_CLEARPLAYLIST     4054
 
 #define IDT_COOLDOWN          2
 

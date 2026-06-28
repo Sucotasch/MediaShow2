@@ -55,6 +55,7 @@ struct PluginState {
     double videoAr;          // native video aspect ratio (0 = unknown)
     int   volume;
     int   repeatMode;       // 0=off, 1=all, 2=one
+    BOOL  appendMode;       // FALSE=replace, TRUE=append
     BOOL  switchInProgress; // lock: ignore Next/Prev while switching
     TCHAR** playlist;
     FILETIME* fileDates;
@@ -122,12 +123,106 @@ static int LoadRepeatMode(void) {
     return (int)GetPrivateProfileInt(TEXT("MediaShow2"), TEXT("RepeatMode"), 1, iniPath);
 }
 
+static void SaveAppendMode(PluginState* state) {
+    if (!state || iniPath[0] == 0) return;
+    TCHAR buf[16];
+    _sntprintf(buf, 16, TEXT("%d"), state->appendMode);
+    WritePrivateProfileString(TEXT("MediaShow2"), TEXT("AppendMode"), buf, iniPath);
+}
+
+static int LoadAppendMode(void) {
+    if (iniPath[0] == 0) return 0;
+    return (int)GetPrivateProfileInt(TEXT("MediaShow2"), TEXT("AppendMode"), 0, iniPath);
+}
+
 static const TCHAR* GetRepeatLabel(int mode) {
     switch (mode) {
     case 1:  return L"\u21BB";     // ↻ Repeat All
     case 2:  return L"\u21BB\u2081"; // ↻₁ Repeat One
     default: return L"\u25CB";     // ○ Off
     }
+}
+
+/* -----------------------------------------------------------------------
+    Playlist persistence
+    ----------------------------------------------------------------------- */
+static TCHAR* GetPlaylistPath(void) {
+    static TCHAR path[MAX_PATH] = {0};
+    if (path[0] != 0) return path;
+    if (iniPath[0] == 0) return NULL;
+    _tcsncpy(path, iniPath, MAX_PATH - 1);
+    TCHAR* slash = _tcsrchr(path, TEXT('\\'));
+    if (slash) {
+        _tcscpy(slash + 1, TEXT("MediaShow2_playlist.txt"));
+    } else {
+        return NULL;
+    }
+    return path;
+}
+
+static void SavePlaylist(PluginState* state) {
+    if (!state || !state->playlist || state->playlistCount == 0) return;
+    TCHAR* path = GetPlaylistPath();
+    if (!path) return;
+    FILE* f = _tfopen(path, TEXT("w"));
+    if (!f) return;
+    _ftprintf(f, TEXT("%d\n"), state->playlistIndex);
+    for (int i = 0; i < state->playlistCount; i++) {
+        _ftprintf(f, TEXT("%s\n"), state->playlist[i]);
+    }
+    fclose(f);
+}
+
+static void LoadPlaylist(PluginState* state) {
+    if (!state) return;
+    TCHAR* path = GetPlaylistPath();
+    if (!path) return;
+    FILE* f = _tfopen(path, TEXT("r"));
+    if (!f) return;
+    TCHAR line[MAX_PATH];
+    if (!fgetws(line, MAX_PATH, f)) { fclose(f); return; }
+    int savedIndex = _ttoi(line);
+    TCHAR** files = NULL;
+    FILETIME* dates = NULL;
+    int count = 0;
+    int allocSize = 64;
+    files = (TCHAR**)calloc(allocSize, sizeof(TCHAR*));
+    dates = (FILETIME*)calloc(allocSize, sizeof(FILETIME));
+    while (fgetws(line, MAX_PATH, f)) {
+        // Remove trailing newline
+        int len = (int)_tcslen(line);
+        while (len > 0 && (line[len-1] == TEXT('\n') || line[len-1] == TEXT('\r')))
+            line[--len] = TEXT('\0');
+        if (len == 0) continue;
+        if (count >= allocSize) {
+            allocSize *= 2;
+            TCHAR** tmp = (TCHAR**)realloc(files, allocSize * sizeof(TCHAR*));
+            FILETIME* tmpD = (FILETIME*)realloc(dates, allocSize * sizeof(FILETIME));
+            if (!tmp || !tmpD) break;
+            files = tmp; dates = tmpD;
+        }
+        // Check file exists
+        WIN32_FILE_ATTRIBUTE_DATA fad;
+        if (GetFileAttributesEx(line, GetFileExInfoStandard, &fad)) {
+            files[count] = _tcsdup(line);
+            dates[count] = fad.ftLastWriteTime;
+            count++;
+        }
+    }
+    fclose(f);
+    if (count == 0) { free(files); free(dates); return; }
+    FreePlaylist(state);
+    state->playlist      = files;
+    state->fileDates     = dates;
+    state->playlistCount = count;
+    state->playlistIndex = (savedIndex >= 0 && savedIndex < count) ? savedIndex : 0;
+}
+
+static void ClearPlaylist(PluginState* state) {
+    if (!state) return;
+    FreePlaylist(state);
+    TCHAR* path = GetPlaylistPath();
+    if (path) _tremove(path);
 }
 
 /* -----------------------------------------------------------------------
@@ -388,9 +483,8 @@ static void UpdatePlaylist(PluginState* state) {
     }
 
     InvalidateRect(state->hPlaylist, NULL, TRUE);
-}
-
-/* -----------------------------------------------------------------------
+    SavePlaylist(state);
+}/* -----------------------------------------------------------------------
    Get selected files from TC
    Find LCLListBox in TTOTAL_CMD and try LB_GETSELITEMS
    ----------------------------------------------------------------------- */
@@ -533,23 +627,41 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
 
     if (validCount == 0) return;
 
-    // Save fileDates before FreePlaylist destroys them
-    FILETIME* savedDates = state->fileDates;
-    state->fileDates = NULL;
-    FreePlaylist(state);
-    state->playlist      = files;
-    state->playlistCount = validCount;
-    state->playlistIndex = 0;
-    state->fileDates     = savedDates;
-    for (int i = 0; i < validCount; i++) {
-        if (_tcsicmp(files[i], state->filePath) == 0) {
-            state->playlistIndex = i;
-            break;
+    if (state->appendMode) {
+        // Append: add new files to existing playlist
+        int oldCount = state->playlistCount;
+        int newTotal = oldCount + validCount;
+        TCHAR** newPl = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
+        FILETIME* newDt = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
+        if (!newPl || !newDt) { free(files); free(state->fileDates); return; }
+        for (int i = 0; i < validCount; i++) {
+            newPl[oldCount + i] = files[i];
+            newDt[oldCount + i] = state->fileDates[i];
+        }
+        state->playlist = newPl;
+        state->fileDates = newDt;
+        state->playlistCount = newTotal;
+        // Don't change playlistIndex — keep current position
+    } else {
+        // Replace: clear old playlist, set new
+        FILETIME* savedDates = state->fileDates;
+        state->fileDates = NULL;
+        FreePlaylist(state);
+        state->playlist      = files;
+        state->playlistCount = validCount;
+        state->playlistIndex = 0;
+        state->fileDates     = savedDates;
+        for (int i = 0; i < validCount; i++) {
+            if (_tcsicmp(files[i], state->filePath) == 0) {
+                state->playlistIndex = i;
+                break;
+            }
         }
     }
     // Update showPlaylist based on current file type
     state->showPlaylist = IsAudioOnly(state->filePath);
     UpdatePlaylist(state);
+    SavePlaylist(state);
 }
 
 static double GetVideoAspectRatio(PluginState* state) {
@@ -727,6 +839,10 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, IDM_FULLSCREEN,
         state->isFullscreen ? TEXT("Exit Fullscreen") : TEXT("Fullscreen"));
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, state->appendMode ? MF_CHECKED : MF_STRING,
+        IDM_APPENDMODE, TEXT("Add files to playlist"));
+    AppendMenu(hMenu, MF_STRING, IDM_CLEARPLAYLIST, TEXT("Clear playlist"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, state->showPlaylist ? MF_CHECKED : MF_STRING,
         IDM_SHOWPLAYLIST, TEXT("Show/Hide Playlist"));
@@ -1064,6 +1180,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         // Defect #2 fix: load persisted volume; don't hardcode 80 here
         state->volume   = LoadVolume();
         state->repeatMode = LoadRepeatMode();
+        state->appendMode = LoadAppendMode();
         state->sortColumn = -1;
         state->hFont = CreateFont(
             -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -1423,6 +1540,16 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             UpdateToolbarRepeat(state);
             break;
 
+        case IDM_APPENDMODE:
+            state->appendMode = !state->appendMode;
+            SaveAppendMode(state);
+            break;
+
+        case IDM_CLEARPLAYLIST:
+            ClearPlaylist(state);
+            UpdatePlaylist(state);
+            break;
+
         case IDM_SHOWPLAYLIST:
             state->showPlaylist = !state->showPlaylist;
             UpdatePlaylist(state);
@@ -1566,6 +1693,11 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     // If no files selected, scan directory for media files
     if (state->playlistCount <= 1)
         BuildPlaylist(state, NULL, FileToLoad);
+
+    // Auto-load: if only 1 file, try to restore saved playlist
+    if (state->playlistCount <= 1) {
+        LoadPlaylist(state);
+    }
 
     // Update showPlaylist based on first file in playlist
     if (state->playlistCount > 0)
