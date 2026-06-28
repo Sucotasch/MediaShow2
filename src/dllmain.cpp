@@ -1660,7 +1660,6 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     HWND hListBox = fd.result;
                     int selCount = (int)SendMessage(hListBox, LB_GETSELCOUNT, 0, 0);
                     if (selCount > 0) {
-                        // Collect selected files
                         int* selItems = (int*)calloc(selCount, sizeof(int));
                         SendMessage(hListBox, LB_GETSELITEMS, selCount, (LPARAM)selItems);
 
@@ -1680,7 +1679,6 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                             TCHAR* buf = (TCHAR*)calloc(len + 1, sizeof(TCHAR));
                             SendMessage(hListBox, LB_GETTEXT, selItems[i], (LPARAM)buf);
 
-                            // Parse TC format
                             TCHAR* datePos = NULL;
                             for (TCHAR* p = buf; p[9]; p++) {
                                 if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
@@ -1732,7 +1730,6 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                         }
                         free(selItems);
 
-                        // Append to existing playlist
                         if (validCount > 0) {
                             int oldCount = existState->playlistCount;
                             int newTotal = oldCount + validCount;
@@ -1750,17 +1747,24 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                                 SavePlaylist(existState);
                             } else {
                                 for (int i = 0; i < validCount; i++) free(files[i]);
-                                free(files);
-                                free(dates);
+                                free(files); free(dates);
                             }
                         } else {
-                            free(files);
-                            free(dates);
+                            free(files); free(dates);
                         }
                     }
                 }
             }
-            return hLastPluginWnd;  // Reuse existing window, prevent new tab
+            // Destroy TC's lister tab by returning NULL, but TC will try next plugin.
+            // Instead: create a throwaway window, let TC use it, then destroy it.
+            HWND hThrowaway = CreateWindowEx(0, TEXT("MediaShow2Main"), APP_NAME,
+                WS_CHILD | WS_VISIBLE, 0, 0, 1, 1,
+                ParentWin, (HMENU)IDC_MAIN, GetModuleHandle(0), NULL);
+            if (hThrowaway) {
+                // Schedule destruction after TC finishes setup
+                PostMessage(hThrowaway, WM_CLOSE, 0, 0);
+            }
+            return hThrowaway ? hThrowaway : hLastPluginWnd;
         }
     }
 
