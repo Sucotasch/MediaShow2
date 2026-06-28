@@ -1455,6 +1455,10 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     if (state->playlistCount <= 1)
         BuildPlaylist(state, NULL, FileToLoad);
 
+    // Update showPlaylist based on first file in playlist
+    if (state->playlistCount > 0)
+        state->showPlaylist = IsAudioOnly(state->playlist[0]);
+
     SetTimer(hWnd, 1, 500, NULL);
     UpdatePlaylist(state);
     UpdateLayout(state);
