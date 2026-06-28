@@ -913,21 +913,33 @@ static void ToggleFullscreen(PluginState* state) {
    ----------------------------------------------------------------------- */
 static void PlayIndex(PluginState* state, int idx) {
     if (!state || idx < 0 || idx >= state->playlistCount) return;
-    state->playlistIndex = idx;
-    TCHAR* f = state->playlist[idx];
 
-    if (state->useDirectShow) {
-        DSPlayer_Stop(state->pDSPlayer);
-        DSPlayer_Open(state->pDSPlayer, f);
-        DSPlayer_Play(state->pDSPlayer);
-    } else {
-        MFPlayer_Stop(state->pMFPlayer);
-        MFPlayer_Open(state->pMFPlayer, f);
-        MFPlayer_Play(state->pMFPlayer);
+    // Skip unplayable files (up to playlistCount attempts to avoid infinite loop)
+    for (int attempt = 0; attempt < state->playlistCount; attempt++) {
+        state->playlistIndex = idx;
+        TCHAR* f = state->playlist[idx];
+
+        HRESULT hr = E_FAIL;
+        if (state->useDirectShow) {
+            DSPlayer_Stop(state->pDSPlayer);
+            hr = DSPlayer_Open(state->pDSPlayer, f);
+            if (SUCCEEDED(hr)) DSPlayer_Play(state->pDSPlayer);
+        } else {
+            MFPlayer_Stop(state->pMFPlayer);
+            hr = MFPlayer_Open(state->pMFPlayer, f);
+            if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
+        }
+
+        if (SUCCEEDED(hr)) break;
+
+        // Failed — try next track
+        idx = (idx + 1) % state->playlistCount;
+        if (idx == state->playlistIndex) break; // full cycle, no playable files
     }
-    // Defect #2 fix: always apply user volume after opening a new file
+
     ApplyVolume(state);
 
+    TCHAR* f = state->playlist[state->playlistIndex];
     _tcsncpy(state->filePath, f, MAX_PATH - 1);
     state->duration  = state->useDirectShow ?
         DSPlayer_GetDuration(state->pDSPlayer) :
