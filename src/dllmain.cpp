@@ -1208,8 +1208,6 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
                 if (idx >= 0) {
                     PlayIndex(state, idx);
-                    state->showPlaylist = FALSE;
-                    UpdateLayout(state);
                 }
             } else if (kd->wVKey == VK_UP && (GetKeyState(VK_CONTROL) & 0x8000)) {
                 int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
