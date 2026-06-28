@@ -1659,6 +1659,10 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                 if (fd.result) {
                     HWND hListBox = fd.result;
                     int selCount = (int)SendMessage(hListBox, LB_GETSELCOUNT, 0, 0);
+                    TCHAR dbg[256];
+                    _sntprintf(dbg, 256, TEXT("MediaShow2: Append selCount=%d\n"), selCount);
+                    OutputDebugString(dbg);
+
                     if (selCount > 0) {
                         int* selItems = (int*)calloc(selCount, sizeof(int));
                         SendMessage(hListBox, LB_GETSELITEMS, selCount, (LPARAM)selItems);
@@ -1755,7 +1759,6 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     }
                 }
             }
-            // Close TC's lister tab: PostMessage WM_CLOSE to ParentWin
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
             return NULL;
         }
