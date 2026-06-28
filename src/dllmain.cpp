@@ -1646,10 +1646,10 @@ HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
 HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     RegisterMainWndClass();
 
-    // Append mode: find existing plugin window and add files to its playlist
-    HWND hExisting = FindWindow(TEXT("MediaShow2Main"), NULL);
-    if (hExisting) {
-        PluginState* existState = GetState(hExisting);
+    // Append mode: check if existing plugin window is still alive
+    static HWND hLastPluginWnd = NULL;
+    if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
+        PluginState* existState = GetState(hLastPluginWnd);
         if (existState && existState->appendMode) {
             // Get selected files from TC
             HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
@@ -1833,6 +1833,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     UpdateStatus(state);
     UpdateSeekbar(state);
     UpdateVolumeSlider(state);
+    hLastPluginWnd = hWnd;
     return hWnd;
 }
 
