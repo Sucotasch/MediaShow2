@@ -1782,6 +1782,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                             if (IsDuplicate(existState, files[i])) continue;
                             files[added] = files[i];
                             dates[added] = dates[i];
+                            files[i] = NULL;
                             added++;
                         }
                         if (added > 0) {
@@ -1803,7 +1804,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                                 for (int i = 0; i < added; i++) free(files[i]);
                             }
                         }
-                        for (int i = added; i < count; i++) free(files[i]);
+                        for (int i = 0; i < count; i++) free(files[i]);
                         free(files); free(dates);
                     }
                 }
@@ -1943,6 +1944,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     if (IsDuplicate(state, files[i])) continue;
                     files[added] = files[i];
                     dates[added] = dates[i];
+                    files[i] = NULL;
                     added++;
                 }
                 if (added > 0) {
@@ -1959,7 +1961,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                         state->playlistCount = newTotal;
                     }
                 }
-                for (int i = added; i < count; i++) free(files[i]);
+                for (int i = 0; i < count; i++) free(files[i]);
                 free(files); free(dates);
             }
         }
