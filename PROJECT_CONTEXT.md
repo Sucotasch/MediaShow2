@@ -261,6 +261,7 @@ MediaShow2/
 26. **Video switching:** recreation MFPlayer + Sleep(50) + 500ms cooldown — нет зависаний
 27. **Skip unplayable files:** автоматический переход к следующему при ошибке открытия
 28. **UpdatePlaylist optimization:** WM_SETREDRAW для больших плейлистов
+29. **Duplicate detection:** `IsDuplicate()` — case-insensitive сравнение путей. Проверяется во всех 4 точках append (A1/A2/B1/B2). Дубликаты пропускаются, их файловые строки освобождаются сразу. Новая архитектура: inline append без промежуточного массива — каждый файл обрабатывается immediately.
 
 ### Что НЕ реализовано
 1. **Современный UI** — текущий интерфейс примитивен
@@ -283,8 +284,9 @@ MediaShow2/
 - **Фильтрация форматов:** RequestSelectedFiles пропускает неподдерживаемые расширения.
 - **Dead code:** Удалён дублирующийся LVN_COLUMNCLICK handler и двойная инициализация sortColumn.
 - **Video hang:** Recreation MFPlayer + Sleep(50) + 500ms cooldown при переключении видео.
-- **Append mode:** При F3 файлы добавляются в текущий плейлист (включая первый запуск с auto-load).
+- **Append mode:** При F3 файлы добавляются в текущий плейлист (включая первый запуск с auto-load). Duplicate detection предотвращает повторное добавление уже воспроизведённых файлов.
 - **Auto-save/autoload:** Плейлист сохраняется в файл и восстанавливается при перезапуске.
+- **Heap corruption:** Исправлена проблема с double-free при компакции массива файлов в dir scan fallback (commit 9260488).
 
 ### Плейлист из выделенных файлов
 
