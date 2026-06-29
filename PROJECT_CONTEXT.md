@@ -263,14 +263,13 @@ MediaShow2/
 28. **UpdatePlaylist optimization:** WM_SETREDRAW для больших плейлистов
 29. **Duplicate detection:** `IsDuplicate()` — case-insensitive сравнение путей. Проверяется во всех 4 точках append (A1/A2/B1/B2). Дубликаты пропускаются, их файловые строки освобождаются сразу. Новая архитектура: inline append без промежуточного массива — каждый файл обрабатывается immediately.
 30. **Playlist keyboard subclass:** ListView subclass через `SetWindowSubclass` — перехватывает Space/M/Esc/F11 когда фокус на плейлисте. Esc закрывает lister tab (`hParentWnd`). F11 заблокирован когда плейлист видим (серый фон бесполезен).
+31. **File Info dialog:** Модальное окно 480×448px с тремя секциями (General, Technical, Tags). Метаданные: MF source reader (codec, channels, sample rate, bit depth, resolution, FPS) + IPropertyStore (title, artist, album, track, genre, year, duration, bitrate). Обложка через `IShellItemImageFactory` (SIIGBF_THUMBNAIL) с fallback на IPropertyStore blob + IPicture::Render. Текст в ES_READONLY Edit controls (копируется Ctrl+C). Окно resizable (WS_THICKFRAME).
 
 ### Что НЕ реализовано
 1. **Современный UI** — текущий интерфейс примитивен
-2. **Информация о файле + теги** (Album, Track no, bitrate и т.д.) — только MessageBox с именем и длительностью
-3. **Редактирование тегов**
-4. **Always On Top**
-5. **Close To Tray (фоновое воспроизведение)**
-6. **Keyboard shortcuts** — TC lister перехватывает大部分 клавиш (стрелки, L, M, I, F11). Работают только Space и S.
+2. **Редактирование тегов** — File Info пока read-only
+3. **Always On Top**
+4. **Close To Tray (фоновое воспроизведение)**
 
 ---
 

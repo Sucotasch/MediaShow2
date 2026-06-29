@@ -10,6 +10,7 @@ A multimedia lister plugin for [Total Commander](https://www.ghisler.com/), rewr
 - **Fullscreen** (double-click) with aspect ratio preservation
 - **Dark mode** support via TC's `lcp_darkmode`
 - **Repeat** — Off / All / One (toolbar button, persisted)
+- **File Info** — metadata panel with album art, codec, bitrate, tags (title/artist/album/genre/year/track)
 - **Context menu** with all playback controls
 - **64-bit** support (`.wlx64`)
 
