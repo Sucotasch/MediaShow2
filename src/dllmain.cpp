@@ -1226,6 +1226,7 @@ struct MediaInfo {
 
 static HBITMAP LoadAlbumArtFromBytes(BYTE* data, DWORD size) {
     if (!data || size == 0) return NULL;
+    // Try IPicture for OLE-compatible formats
     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, size);
     if (!hMem) return NULL;
     void* pMem = GlobalLock(hMem);
@@ -1233,33 +1234,38 @@ static HBITMAP LoadAlbumArtFromBytes(BYTE* data, DWORD size) {
     GlobalUnlock(hMem);
     IStream* pStream = NULL;
     if (FAILED(CreateStreamOnHGlobal(hMem, TRUE, &pStream))) { GlobalFree(hMem); return NULL; }
-
-    // Load via IPicture using runtime resolution
     typedef HRESULT (WINAPI *OleLoadPicture_t)(IStream*, LONG, BOOL, REFIID, void**);
     static OleLoadPicture_t pOleLoadPicture = NULL;
     if (!pOleLoadPicture) {
         HMODULE hOle = LoadLibrary(TEXT("oleaut32.dll"));
         if (hOle) pOleLoadPicture = (OleLoadPicture_t)GetProcAddress(hOle, "OleLoadPicture");
     }
-    if (!pOleLoadPicture) { pStream->Release(); return NULL; }
-
-    IPicture* pPic = NULL;
-    HRESULT hr = pOleLoadPicture(pStream, 0, FALSE, IID_IPicture, (void**)&pPic);
+    if (pOleLoadPicture) {
+        IPicture* pPic = NULL;
+        HRESULT hr = pOleLoadPicture(pStream, 0, FALSE, IID_IPicture, (void**)&pPic);
+        if (SUCCEEDED(hr) && pPic) {
+            short picType = 0;
+            pPic->get_Type(&picType);
+            // Only render if it's a bitmap (PICTYPE_BITMAP = 1)
+            if (picType == 1) {
+                HDC hdcScreen = GetDC(NULL);
+                HDC hdcMem = CreateCompatibleDC(hdcScreen);
+                HBITMAP hBmp = CreateCompatibleBitmap(hdcScreen, 200, 200);
+                HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, hBmp);
+                RECT rcRender = {0, 200, 200, 0};
+                pPic->Render(hdcMem, 0, 0, 200, 200, 0, 200, -200, 200, &rcRender);
+                SelectObject(hdcMem, hOld);
+                DeleteDC(hdcMem);
+                ReleaseDC(NULL, hdcScreen);
+                pPic->Release();
+                pStream->Release();
+                return hBmp;
+            }
+            pPic->Release();
+        }
+    }
     pStream->Release();
-    if (FAILED(hr) || !pPic) return NULL;
-
-    // Render to memory DC
-    HDC hdcScreen = GetDC(NULL);
-    HDC hdcMem = CreateCompatibleDC(hdcScreen);
-    HBITMAP hBmp = CreateCompatibleBitmap(hdcScreen, 200, 200);
-    HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, hBmp);
-    RECT rcRender = {0, 200, 200, 0};
-    pPic->Render(hdcMem, 0, 0, 200, 200, 0, 200, -200, 200, &rcRender);
-    SelectObject(hdcMem, hOld);
-    DeleteDC(hdcMem);
-    ReleaseDC(NULL, hdcScreen);
-    pPic->Release();
-    return hBmp;
+    return NULL;
 }
 
 static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, MediaInfo* info) {
@@ -1284,6 +1290,9 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         int dm = (int)(duration / 60), ds = (int)duration % 60;
         _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
     }
+
+    // Ensure MF is initialized
+    MFStartup(MF_VERSION);
 
     IMFSourceReader* reader = NULL;
     HRESULT hr = MFCreateSourceReaderFromURL(filePath, NULL, &reader);
@@ -1375,29 +1384,24 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         if (SUCCEEDED(hr) && props) {
             PROPVARIANT val;
 
-            // Title
-            PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(PKEY_Title, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                _tcsncpy(info->title, val.pwszVal, 255);
-            PropVariantClear(&val);
+            // Helper to read string property (handles both VT_LPWSTR and VT_VECTOR|VT_LPWSTR)
+            auto readString = [&](REFPROPERTYKEY pk, TCHAR* dst, int dstMax) {
+                PROPVARIANT v;
+                PropVariantInit(&v);
+                HRESULT hr = props->GetValue(pk, &v);
+                if (SUCCEEDED(hr)) {
+                    if (v.vt == VT_LPWSTR && v.pwszVal)
+                        _tcsncpy(dst, v.pwszVal, dstMax - 1);
+                    else if (v.vt == (VT_VECTOR | VT_LPWSTR) && v.calpwstr.cElems > 0 && v.calpwstr.pElems[0])
+                        _tcsncpy(dst, v.calpwstr.pElems[0], dstMax - 1);
+                }
+                PropVariantClear(&v);
+            };
 
-            // Artist
-            PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(PKEY_Music_Artist, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                _tcsncpy(info->artist, val.pwszVal, 255);
-            PropVariantClear(&val);
-
-            // Album
-            PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(PKEY_Music_AlbumTitle, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                _tcsncpy(info->album, val.pwszVal, 255);
-            PropVariantClear(&val);
-
-            // Genre
-            PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(PKEY_Music_ContentGroupDescription, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                _tcsncpy(info->genre, val.pwszVal, 127);
-            PropVariantClear(&val);
+            readString(PKEY_Title, info->title, 256);
+            readString(PKEY_Music_Artist, info->artist, 256);
+            readString(PKEY_Music_AlbumTitle, info->album, 256);
+            readString(PKEY_Music_ContentGroupDescription, info->genre, 128);
 
             // Track number
             PropVariantInit(&val);
@@ -1418,8 +1422,20 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
                     _tcsncpy(info->year, val.pwszVal, 4);
             }
             PropVariantClear(&val);
+            // Fallback year key
+            if (info->year[0] == 0) {
+                PropVariantInit(&val);
+                if (SUCCEEDED(props->GetValue(PKEY_Media_DateEncoded, &val))) {
+                    if (val.vt == VT_FILETIME) {
+                        SYSTEMTIME st;
+                        if (FileTimeToSystemTime(&val.filetime, &st))
+                            _sntprintf(info->year, 16, TEXT("%u"), st.wYear);
+                    }
+                }
+                PropVariantClear(&val);
+            }
 
-            // Album art from embedded blob
+            // Album art: embedded blob via IPicture
             PropVariantInit(&val);
             if (SUCCEEDED(props->GetValue(kPKEY_Music_AlbumCoverArt, &val))) {
                 BYTE* pData = NULL;
@@ -1437,13 +1453,13 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
             PropVariantClear(&val);
             props->Release();
         }
-        // Fallback: Shell thumbnail
+        // Shell thumbnail fallback (outside props block)
         if (!info->hAlbumArt) {
             IShellItemImageFactory* imgFactory = NULL;
             hr = shellItem->QueryInterface(IID_IShellItemImageFactory, (void**)&imgFactory);
             if (SUCCEEDED(hr) && imgFactory) {
                 SIZE sz = {200, 200};
-                imgFactory->GetImage(sz, 0x0004, &info->hAlbumArt);
+                imgFactory->GetImage(sz, 0x0001, &info->hAlbumArt); // SIIGBF_THUMBNAIL
                 imgFactory->Release();
             }
         }
