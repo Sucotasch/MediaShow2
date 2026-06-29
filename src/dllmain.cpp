@@ -1583,29 +1583,7 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     int colX = artW;
     int colW = 400;
     int dlgW = colX + colW + 16 + 40;
-
-    // Height = top margin + sum of (section header + fields) per section + bottom margin
-    int topM = 16, botM = 16, hdrH = 24, fieldH = 24;
-    int techCount = 0;
-    if (fd->info.codec[0]) techCount++;
-    if (fd->info.bitrate[0]) techCount++;
-    if (fd->info.channels[0]) techCount++;
-    if (fd->info.sampleRate[0]) techCount++;
-    if (fd->info.bitsPerSample[0]) techCount++;
-    if (fd->info.resolution[0]) techCount++;
-    if (fd->info.fps[0]) techCount++;
-    int tagCount = 0;
-    if (fd->info.title[0]) tagCount++;
-    if (fd->info.artist[0]) tagCount++;
-    if (fd->info.album[0]) tagCount++;
-    if (fd->info.track[0]) tagCount++;
-    if (fd->info.genre[0]) tagCount++;
-    if (fd->info.year[0]) tagCount++;
-    int dlgH = topM
-        + hdrH + 4 * fieldH                           // General section
-        + (techCount > 0 ? hdrH + techCount * fieldH : 0)  // Technical
-        + (tagCount > 0 ? hdrH + tagCount * fieldH : 0)    // Tags
-        + botM;
+    int dlgH = 520; // Fixed: General(120) + Technical(192) + Tags(168) + margins
 
     HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
         WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE | WS_THICKFRAME | WS_MAXIMIZEBOX,
