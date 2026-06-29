@@ -2,6 +2,8 @@
 #include <windowsx.h>
 #include <shellapi.h>
 #include <shobjidl_core.h>
+#include <ocidl.h>
+#include <oleauto.h>
 #include <propkey.h>
 #include <propvarutil.h>
 #include <commctrl.h>
@@ -1224,32 +1226,40 @@ struct MediaInfo {
 
 static HBITMAP LoadAlbumArtFromBytes(BYTE* data, DWORD size) {
     if (!data || size == 0) return NULL;
-    // Create IStream from bytes
     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, size);
     if (!hMem) return NULL;
     void* pMem = GlobalLock(hMem);
     memcpy(pMem, data, size);
     GlobalUnlock(hMem);
     IStream* pStream = NULL;
-    HRESULT hr = CreateStreamOnHGlobal(hMem, TRUE, &pStream);
-    if (FAILED(hr) || !pStream) { GlobalFree(hMem); return NULL; }
-    // Use GDI+ to load bitmap from stream
-    // Fallback: save to temp file and load
-    TCHAR tmpPath[MAX_PATH];
-    GetTempPath(MAX_PATH, tmpPath);
-    _tcscat(tmpPath, TEXT("ms2_art.jpg"));
-    HANDLE hFile = CreateFile(tmpPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile != INVALID_HANDLE_VALUE) {
-        DWORD written;
-        WriteFile(hFile, data, size, &written, NULL);
-        CloseHandle(hFile);
-        HBITMAP hBmp = (HBITMAP)LoadImage(NULL, tmpPath, IMAGE_BITMAP, 200, 200, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
-        DeleteFile(tmpPath);
-        pStream->Release();
-        return hBmp;
+    if (FAILED(CreateStreamOnHGlobal(hMem, TRUE, &pStream))) { GlobalFree(hMem); return NULL; }
+
+    // Load via IPicture using runtime resolution
+    typedef HRESULT (WINAPI *OleLoadPicture_t)(IStream*, LONG, BOOL, REFIID, void**);
+    static OleLoadPicture_t pOleLoadPicture = NULL;
+    if (!pOleLoadPicture) {
+        HMODULE hOle = LoadLibrary(TEXT("oleaut32.dll"));
+        if (hOle) pOleLoadPicture = (OleLoadPicture_t)GetProcAddress(hOle, "OleLoadPicture");
     }
+    if (!pOleLoadPicture) { pStream->Release(); return NULL; }
+
+    IPicture* pPic = NULL;
+    HRESULT hr = pOleLoadPicture(pStream, 0, FALSE, IID_IPicture, (void**)&pPic);
     pStream->Release();
-    return NULL;
+    if (FAILED(hr) || !pPic) return NULL;
+
+    // Render to memory DC
+    HDC hdcScreen = GetDC(NULL);
+    HDC hdcMem = CreateCompatibleDC(hdcScreen);
+    HBITMAP hBmp = CreateCompatibleBitmap(hdcScreen, 200, 200);
+    HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, hBmp);
+    RECT rcRender = {0, 200, 200, 0};
+    pPic->Render(hdcMem, 0, 0, 200, 200, 0, 200, -200, 200, &rcRender);
+    SelectObject(hdcMem, hOld);
+    DeleteDC(hdcMem);
+    ReleaseDC(NULL, hdcScreen);
+    pPic->Release();
+    return hBmp;
 }
 
 static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, MediaInfo* info) {
@@ -1342,6 +1352,21 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         reader->Release();
     }
 
+    // Bitrate fallback: calculate from file size and duration
+    if (info->bitrate[0] == 0 && info->duration[0]) {
+        WIN32_FILE_ATTRIBUTE_DATA fad2;
+        if (GetFileAttributesEx(filePath, GetFileExInfoStandard, &fad2)) {
+            ULONGLONG sz = ((ULONGLONG)fad2.nFileSizeHigh << 32) | fad2.nFileSizeLow;
+            int dm = 0, ds = 0;
+            _stscanf(info->duration, TEXT("%d:%d"), &dm, &ds);
+            double dur = dm * 60.0 + ds;
+            if (dur > 0) {
+                UINT32 kbps = (UINT32)((sz * 8) / (dur * 1000));
+                _sntprintf(info->bitrate, 32, TEXT("%u kbps"), kbps);
+            }
+        }
+    }
+
     IShellItem2* shellItem = NULL;
     hr = SHCreateItemFromParsingName(filePath, NULL, IID_IShellItem2, (void**)&shellItem);
     if (SUCCEEDED(hr) && shellItem) {
@@ -1349,18 +1374,42 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         hr = shellItem->GetPropertyStore(GPS_DEFAULT, IID_IPropertyStore, (void**)&props);
         if (SUCCEEDED(hr) && props) {
             PROPVARIANT val;
-            #define READ_STR(pk, dst) \
-                PropVariantInit(&val); \
-                if (SUCCEEDED(props->GetValue(pk, &val)) && val.vt == VT_LPWSTR && val.pwszVal) \
-                    _tcsncpy(dst, val.pwszVal, ARRAYSIZE(dst) - 1); \
-                PropVariantClear(&val);
 
-            READ_STR(PKEY_Title, info->title)
-            READ_STR(PKEY_Music_Artist, info->artist)
-            READ_STR(PKEY_Music_AlbumTitle, info->album)
-            READ_STR(PKEY_Music_ContentGroupDescription, info->genre)
-            READ_STR(kPKEY_Music_TrackNumber, info->track)
+            // Title
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Title, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                _tcsncpy(info->title, val.pwszVal, 255);
+            PropVariantClear(&val);
 
+            // Artist
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Music_Artist, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                _tcsncpy(info->artist, val.pwszVal, 255);
+            PropVariantClear(&val);
+
+            // Album
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Music_AlbumTitle, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                _tcsncpy(info->album, val.pwszVal, 255);
+            PropVariantClear(&val);
+
+            // Genre
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Music_ContentGroupDescription, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                _tcsncpy(info->genre, val.pwszVal, 127);
+            PropVariantClear(&val);
+
+            // Track number
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(kPKEY_Music_TrackNumber, &val))) {
+                if (val.vt == VT_UI4)
+                    _sntprintf(info->track, 16, TEXT("%u"), val.ulVal);
+                else if (val.vt == VT_LPWSTR && val.pwszVal)
+                    _tcsncpy(info->track, val.pwszVal, 15);
+            }
+            PropVariantClear(&val);
+
+            // Year
             PropVariantInit(&val);
             if (SUCCEEDED(props->GetValue(PKEY_Media_DateReleased, &val))) {
                 if (val.vt == VT_UI4)
@@ -1372,14 +1421,20 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
 
             // Album art from embedded blob
             PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(kPKEY_Music_AlbumCoverArt, &val)) &&
-                (val.vt & VT_ARRAY) && val.parray && val.parray->rgsabound[0].cElements > 0) {
-                BYTE* pData = (BYTE*)val.parray->pvData;
-                DWORD cbSize = val.parray->rgsabound[0].cElements;
-                info->hAlbumArt = LoadAlbumArtFromBytes(pData, cbSize);
+            if (SUCCEEDED(props->GetValue(kPKEY_Music_AlbumCoverArt, &val))) {
+                BYTE* pData = NULL;
+                DWORD cbSize = 0;
+                if (val.vt == (VT_VECTOR | VT_UI1)) {
+                    pData = val.caub.pElems;
+                    cbSize = val.caub.cElems;
+                } else if ((val.vt & VT_ARRAY) && val.parray) {
+                    pData = (BYTE*)val.parray->pvData;
+                    cbSize = val.parray->rgsabound[0].cElements;
+                }
+                if (pData && cbSize > 0)
+                    info->hAlbumArt = LoadAlbumArtFromBytes(pData, cbSize);
             }
             PropVariantClear(&val);
-            #undef READ_STR
             props->Release();
         }
         // Fallback: Shell thumbnail
@@ -1411,10 +1466,10 @@ static LRESULT CALLBACK FileInfoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
             HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, fd->info.hAlbumArt);
             BITMAP bm;
             GetObject(fd->info.hAlbumArt, sizeof(bm), &bm);
-            int maxW = 200, maxH = 200;
+            int maxW = 240, maxH = 240;
             double scale = min((double)maxW / bm.bmWidth, (double)maxH / bm.bmHeight);
             int w = (int)(bm.bmWidth * scale), h = (int)(bm.bmHeight * scale);
-            int x = 20 + (maxW - w) / 2, y = 20 + (maxH - h) / 2;
+            int x = 16 + (maxW - w) / 2, y = 16 + (maxH - h) / 2;
             SetStretchBltMode(hdc, HALFTONE);
             StretchBlt(hdc, x, y, w, h, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
             SelectObject(hdcMem, hOld);
@@ -1423,6 +1478,10 @@ static LRESULT CALLBACK FileInfoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
         EndPaint(hWnd, &ps);
         return 0;
     }
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+            DestroyWindow(hWnd);
+        return 0;
     case WM_CLOSE:
         DestroyWindow(hWnd);
         return 0;
@@ -1450,11 +1509,18 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
         registered = TRUE;
     }
 
-    int artW = fd->info.hAlbumArt ? 220 : 0;
-    int colX = 12 + artW + 12;
-    int colW = 380 - artW;
-    int dlgW = colX + colW + 12;
-    int dlgH = 480;
+    // Fixed layout: art on left, metadata on right
+    int artW = 272;  // 16 + 240 + 16
+    int colX = artW;
+    int colW = 400;
+    int dlgW = colX + colW + 16;
+
+    // Calculate height: count all visible fields
+    int lines = 0;
+    lines += 4; // General: File, Duration, Size, Format
+    if (fd->info.codec[0] || fd->info.bitrate[0] || fd->info.channels[0]) lines += 7; // Technical
+    if (fd->info.title[0] || fd->info.artist[0] || fd->info.album[0]) lines += 6; // Tags
+    int dlgH = 32 + lines * 24 + 16; // top margin + fields + bottom margin
 
     HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
         WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
@@ -1462,27 +1528,24 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)fd);
 
     HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-    int y = 20;
+    int y = 16;
 
-    // Helper: add section header
     auto addSection = [&](const TCHAR* title) {
         y += 4;
         HWND hs = CreateWindowEx(0, TEXT("STATIC"), title,
             WS_CHILD | WS_VISIBLE, colX, y, colW, 18, hWnd, NULL, GetModuleHandle(0), NULL);
         SendMessage(hs, WM_SETFONT, (WPARAM)hFont, TRUE);
-        // Draw underline
         HDC hdc = GetDC(hWnd);
         HPEN hPen = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_GRAYTEXT));
-        HPEN hOld = (HPEN)SelectObject(hdc, hPen);
+        HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
         MoveToEx(hdc, colX, y + 17, NULL);
         LineTo(hdc, colX + colW, y + 17);
-        SelectObject(hdc, hOld);
+        SelectObject(hdc, hOldPen);
         DeleteObject(hPen);
         ReleaseDC(hWnd, hdc);
         y += 20;
     };
 
-    // Helper: add field row
     auto addField = [&](const TCHAR* label, const TCHAR* value) {
         if (!value || !value[0]) return;
         HWND hl = CreateWindowEx(0, TEXT("STATIC"), label,
@@ -1521,12 +1584,6 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
         addField(TEXT("Genre:"), fd->info.genre);
         addField(TEXT("Year:"), fd->info.year);
     }
-
-    y += 8;
-    HWND hBtn = CreateWindowEx(0, TEXT("BUTTON"), TEXT("Close"),
-        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-        dlgW - 90, dlgH - 40, 78, 26, hWnd, (HMENU)IDOK, GetModuleHandle(0), NULL);
-    SendMessage(hBtn, WM_SETFONT, (WPARAM)hFont, TRUE);
 
     RECT pr; GetWindowRect(hParent, &pr);
     SetWindowPos(hWnd, HWND_TOP, pr.left + (pr.right - pr.left - dlgW) / 2,
