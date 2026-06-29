@@ -20,6 +20,18 @@ A multimedia lister plugin for [Total Commander](https://www.ghisler.com/), rewr
 | AVI, MPG, MPEG, ASF, VOB | MP3, WAV, WMA, OGG, FLAC, AAC, OPUS |
 | MKV, WEBM, MP4, M4A, DAT | MIDI, MID, KAR, MP1, MP2 |
 
+### Keyboard Shortcuts
+
+| Key | Video mode | Playlist visible |
+|-----|-----------|-----------------|
+| Space | Play/Pause | Play/Pause |
+| S | Stop | — |
+| ↑/↓ | Volume ±5% | Navigate playlist |
+| ←/→ | Seek ±10s | — |
+| Esc | Close plugin | Close lister tab |
+| F11 | Toggle fullscreen | — (disabled) |
+| M | Toggle mute | Toggle mute |
+
 ### Playlist Management
 
 - **Delete** — remove selected track from playlist

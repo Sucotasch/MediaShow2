@@ -262,6 +262,7 @@ MediaShow2/
 27. **Skip unplayable files:** автоматический переход к следующему при ошибке открытия
 28. **UpdatePlaylist optimization:** WM_SETREDRAW для больших плейлистов
 29. **Duplicate detection:** `IsDuplicate()` — case-insensitive сравнение путей. Проверяется во всех 4 точках append (A1/A2/B1/B2). Дубликаты пропускаются, их файловые строки освобождаются сразу. Новая архитектура: inline append без промежуточного массива — каждый файл обрабатывается immediately.
+30. **Playlist keyboard subclass:** ListView subclass через `SetWindowSubclass` — перехватывает Space/M/Esc/F11 когда фокус на плейлисте. Esc закрывает lister tab (`hParentWnd`). F11 заблокирован когда плейлист видим (серый фон бесполезен).
 
 ### Что НЕ реализовано
 1. **Современный UI** — текущий интерфейс примитивен
