@@ -1583,7 +1583,7 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     int colX = artW;
     int colW = 400;
     int dlgW = colX + colW + 16 + 40;
-    int dlgH = 520; // Fixed: General(120) + Technical(192) + Tags(168) + margins
+    int dlgH = 448; // Fixed: General(120) + Technical(192) + Tags(168) + margins
 
     HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
         WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE | WS_THICKFRAME | WS_MAXIMIZEBOX,
