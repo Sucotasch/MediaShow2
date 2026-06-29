@@ -1585,8 +1585,7 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     int dlgW = colX + colW + 16 + 40;
 
     // Calculate height: count all visible fields dynamically
-    int lines = 0;
-    lines += 4; // General: File, Duration, Size, Format
+    int lines = 4; // General: File, Duration, Size, Format
     int techCount = 0;
     if (fd->info.codec[0]) techCount++;
     if (fd->info.bitrate[0]) techCount++;
@@ -1604,8 +1603,9 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     if (fd->info.genre[0]) tagCount++;
     if (fd->info.year[0]) tagCount++;
     lines += tagCount;
-    if (techCount > 0 || tagCount > 0) lines += 2; // section headers + separators
-    int dlgH = 32 + lines * 24 + 16;
+    // 3 section headers (General always + Technical if any + Tags if any)
+    int headers = 1 + (techCount > 0 ? 1 : 0) + (tagCount > 0 ? 1 : 0);
+    int dlgH = 16 + headers * 24 + lines * 24 + 16;
 
     HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
         WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE | WS_THICKFRAME | WS_MAXIMIZEBOX,
