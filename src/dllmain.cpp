@@ -23,6 +23,8 @@ static const PROPERTYKEY kPKEY_Music_AlbumCoverArt =
     {0x2b842dc0, 0x51d7, 0x4c3b, {0xb1, 0xcc, 0xce, 0x3e, 0x1a, 0x72, 0x9a, 0x41}, 14};
 static const PROPERTYKEY kPKEY_Music_TrackNumber =
     {0x56a87397, 0xfa77, 0x11d3, {0x8a, 0x26, 0x00, 0xc0, 0x4f, 0x68, 0x37, 0x10}, 7};
+static const PROPERTYKEY kPKEY_Audio_EncodingBitrate =
+    {0x64440490, 0x468b, 0x11d3, {0x8b, 0x57, 0x00, 0xc0, 0x4f, 0xb9, 0xbd, 0x4f}, 4};
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "uxtheme.lib")
@@ -1368,8 +1370,8 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         reader->Release();
     }
 
-    // Bitrate fallback: calculate from file size and duration
-    if (info->duration[0]) {
+    // Bitrate fallback: calculate from file size and duration only if tags don't have it
+    if (info->bitrate[0] == 0 && info->duration[0]) {
         WIN32_FILE_ATTRIBUTE_DATA fad2;
         if (GetFileAttributesEx(filePath, GetFileExInfoStandard, &fad2)) {
             ULONGLONG sz = ((ULONGLONG)fad2.nFileSizeHigh << 32) | fad2.nFileSizeLow;
@@ -1410,6 +1412,16 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
             readString(PKEY_Music_Artist, info->artist, 256);
             readString(PKEY_Music_AlbumTitle, info->album, 256);
             readString(PKEY_Music_ContentGroupDescription, info->genre, 128);
+
+            // Bitrate from tags
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(kPKEY_Audio_EncodingBitrate, &val))) {
+                if (val.vt == VT_UI4 && val.ulVal > 0)
+                    _sntprintf(info->bitrate, 32, TEXT("%u kbps"), val.ulVal / 1000);
+                else if (val.vt == VT_I4 && val.lVal > 0)
+                    _sntprintf(info->bitrate, 32, TEXT("%d kbps"), val.lVal / 1000);
+            }
+            PropVariantClear(&val);
 
             // Track number - try multiple types
             PropVariantInit(&val);
