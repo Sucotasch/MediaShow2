@@ -1,11 +1,17 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
+#include <shobjidl_core.h>
+#include <propkey.h>
+#include <propvarutil.h>
 #include <commctrl.h>
 #include <uxtheme.h>
 #include <tchar.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
 #include "plugin_api.h"
 #include "mf_player.h"
 #include "ds_player.h"
@@ -1187,6 +1193,297 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 
 /* -----------------------------------------------------------------------
+   File Info dialog — read-only metadata panel with album art
+   ----------------------------------------------------------------------- */
+struct MediaInfo {
+    TCHAR fileName[MAX_PATH];
+    TCHAR duration[32];
+    TCHAR fileSize[32];
+    TCHAR format[128];
+    TCHAR codec[64];
+    TCHAR bitrate[32];
+    TCHAR channels[32];
+    TCHAR sampleRate[32];
+    TCHAR bitsPerSample[32];
+    TCHAR resolution[32];
+    TCHAR fps[16];
+    TCHAR title[256];
+    TCHAR artist[256];
+    TCHAR album[256];
+    TCHAR genre[128];
+    TCHAR year[16];
+    HBITMAP hAlbumArt;
+};
+
+static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, MediaInfo* info) {
+    memset(info, 0, sizeof(MediaInfo));
+    info->hAlbumArt = NULL;
+
+    // Basic info from file system
+    _tcsncpy(info->fileName, filePath, MAX_PATH - 1);
+    TCHAR* fname = _tcsrchr(info->fileName, TEXT('\\'));
+    if (fname) memmove(info->fileName, fname + 1, (_tcslen(fname + 1) + 1) * sizeof(TCHAR));
+
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (GetFileAttributesEx(filePath, GetFileExInfoStandard, &fad)) {
+        ULONGLONG sz = ((ULONGLONG)fad.nFileSizeHigh << 32) | fad.nFileSizeLow;
+        if (sz >= 1024 * 1024)
+            _sntprintf(info->fileSize, 32, TEXT("%.1f MB"), sz / (1024.0 * 1024.0));
+        else if (sz >= 1024)
+            _sntprintf(info->fileSize, 32, TEXT("%.1f KB"), sz / 1024.0);
+        else
+            _sntprintf(info->fileSize, 32, TEXT("%llu bytes"), sz);
+    }
+
+    // Duration
+    int dm = (int)(duration / 60), ds = (int)duration % 60;
+    _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
+
+    // Try MF source reader for technical info
+    IMFSourceReader* reader = NULL;
+    HRESULT hr = MFCreateSourceReaderFromURL(filePath, NULL, &reader);
+    if (SUCCEEDED(hr) && reader) {
+        // Get audio info
+        IMFMediaType* audioType = NULL;
+        hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &audioType);
+        if (SUCCEEDED(hr) && audioType) {
+            GUID subtype;
+            if (SUCCEEDED(audioType->GetGUID(MF_MT_SUBTYPE, &subtype))) {
+                if (subtype == MFAudioFormat_AAC) _tcscpy(info->codec, TEXT("AAC"));
+                else if (subtype == MFAudioFormat_MP3) _tcscpy(info->codec, TEXT("MP3"));
+                else if (subtype == MFAudioFormat_Float) _tcscpy(info->codec, TEXT("PCM Float"));
+                else if (subtype == MFAudioFormat_PCM) _tcscpy(info->codec, TEXT("PCM"));
+                else if (subtype == MFAudioFormat_WMAudioV8) _tcscpy(info->codec, TEXT("WMA v8"));
+                else if (subtype == MFAudioFormat_WMAudioV9) _tcscpy(info->codec, TEXT("WMA v9"));
+                else _sntprintf(info->codec, 64, TEXT("Audio (%08X)"), (DWORD)subtype.Data1);
+            }
+            UINT32 val = 0;
+            if (SUCCEEDED(audioType->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &val)))
+                _sntprintf(info->channels, 32, TEXT("%u"), val);
+            if (SUCCEEDED(audioType->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &val)))
+                _sntprintf(info->sampleRate, 32, TEXT("%u Hz"), val);
+            if (SUCCEEDED(audioType->GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, &val)))
+                _sntprintf(info->bitsPerSample, 32, TEXT("%u bit"), val);
+            if (SUCCEEDED(audioType->GetUINT32(MF_MT_AVG_BITRATE, &val)))
+                _sntprintf(info->bitrate, 32, TEXT("%u kbps"), val / 1000);
+            audioType->Release();
+        }
+        // Get video info
+        IMFMediaType* videoType = NULL;
+        hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoType);
+        if (SUCCEEDED(hr) && videoType) {
+            GUID subtype;
+            if (SUCCEEDED(videoType->GetGUID(MF_MT_SUBTYPE, &subtype))) {
+                if (subtype == MFVideoFormat_H264) _tcscpy(info->codec, TEXT("H.264"));
+                else if (subtype == MFVideoFormat_HEVC) _tcscpy(info->codec, TEXT("HEVC"));
+                else if (subtype == MFVideoFormat_VP80) _tcscpy(info->codec, TEXT("VP8"));
+                else if (subtype == MFVideoFormat_VP90) _tcscpy(info->codec, TEXT("VP9"));
+                else if (subtype == MFVideoFormat_MPEG2) _tcscpy(info->codec, TEXT("MPEG-2"));
+                else _sntprintf(info->codec, 64, TEXT("Video (%08X)"), (DWORD)subtype.Data1);
+                _tcscpy(info->format, TEXT("Video"));
+            }
+            UINT32 w = 0, h = 0;
+            if (SUCCEEDED(MFGetAttributeSize(videoType, MF_MT_FRAME_SIZE, &w, &h)))
+                _sntprintf(info->resolution, 32, TEXT("%u\u00D7%u"), w, h);
+            UINT32 num = 0, den = 0;
+            if (SUCCEEDED(MFGetAttributeRatio(videoType, MF_MT_FRAME_RATE, &num, &den)) && den > 0)
+                _sntprintf(info->fps, 16, TEXT("%.1f"), (double)num / den);
+            UINT32 val = 0;
+            if (SUCCEEDED(videoType->GetUINT32(MF_MT_AVG_BITRATE, &val)))
+                _sntprintf(info->bitrate, 32, TEXT("%u kbps"), val / 1000);
+            videoType->Release();
+        }
+        if (info->format[0] == 0) _tcscpy(info->format, TEXT("Audio"));
+        reader->Release();
+    }
+
+    // Tags via IPropertyStore
+    IShellItem2* shellItem = NULL;
+    hr = SHCreateItemFromParsingName(filePath, NULL, IID_IShellItem2, (void**)&shellItem);
+    if (SUCCEEDED(hr) && shellItem) {
+        IPropertyStore* props = NULL;
+        hr = shellItem->GetPropertyStore(GPS_DEFAULT, IID_IPropertyStore, (void**)&props);
+        if (SUCCEEDED(hr) && props) {
+            PROPVARIANT val;
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Title, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                _tcsncpy(info->title, val.pwszVal, 255);
+            PropVariantClear(&val);
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Music_Artist, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                _tcsncpy(info->artist, val.pwszVal, 255);
+            PropVariantClear(&val);
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Music_AlbumTitle, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                _tcsncpy(info->album, val.pwszVal, 255);
+            PropVariantClear(&val);
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Music_ContentGroupDescription, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                _tcsncpy(info->genre, val.pwszVal, 127);
+            PropVariantClear(&val);
+            // Try Genre from System.Photo.Keyword or fallback
+            if (info->genre[0] == 0) {
+                PropVariantInit(&val);
+                if (SUCCEEDED(props->GetValue(PKEY_Music_Composer, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
+                    _tcsncpy(info->genre, val.pwszVal, 127);
+                PropVariantClear(&val);
+            }
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(PKEY_Media_DateReleased, &val))) {
+                if (val.vt == VT_UI4)
+                    _sntprintf(info->year, 16, TEXT("%u"), val.ulVal);
+                else if (val.vt == VT_LPWSTR && val.pwszVal && _tcslen(val.pwszVal) >= 4)
+                    _tcsncpy(info->year, val.pwszVal, 4);
+            }
+            PropVariantClear(&val);
+            props->Release();
+        }
+        // Album art via Shell image factory
+        IShellItemImageFactory* imgFactory = NULL;
+        hr = shellItem->QueryInterface(IID_IShellItemImageFactory, (void**)&imgFactory);
+        if (SUCCEEDED(hr) && imgFactory) {
+            SIZE sz = {200, 200};
+            imgFactory->GetImage(sz, SIIGBF_ICONONLY, &info->hAlbumArt);
+            imgFactory->Release();
+        }
+        shellItem->Release();
+    }
+}
+
+struct FileInfoData {
+    MediaInfo info;
+    HWND hEdit;
+    int editCount;
+};
+
+#define FID_TITLE   1001
+#define FID_VALUE   1002
+
+static void AddField(HWND hParent, FileInfoData* fd, int y, const TCHAR* label, const TCHAR* value, int valueW) {
+    HWND hLabel = CreateWindowEx(0, TEXT("STATIC"), label,
+        WS_CHILD | WS_VISIBLE, 12, y, 100, 20, hParent, NULL, GetModuleHandle(0), NULL);
+    SendMessage(hLabel, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+
+    HWND hValue = CreateWindowEx(0, TEXT("EDIT"), value,
+        WS_CHILD | WS_VISIBLE | ES_READONLY | ES_AUTOHSCROLL,
+        116, y, valueW, 20, hParent, NULL, GetModuleHandle(0), NULL);
+    SendMessage(hValue, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+}
+
+static LRESULT CALLBACK FileInfoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hWnd, &ps);
+        FileInfoData* fd = (FileInfoData*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+        if (fd && fd->info.hAlbumArt) {
+            HDC hdcMem = CreateCompatibleDC(hdc);
+            HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, fd->info.hAlbumArt);
+            BITMAP bm;
+            GetObject(fd->info.hAlbumArt, sizeof(bm), &bm);
+            int x = 330, y = 12, maxW = 120, maxH = 120;
+            double scale = min((double)maxW / bm.bmWidth, (double)maxH / bm.bmHeight);
+            int w = (int)(bm.bmWidth * scale), h = (int)(bm.bmHeight * scale);
+            SetStretchBltMode(hdc, HALFTONE);
+            StretchBlt(hdc, x + (maxW - w) / 2, y + (maxH - h) / 2, w, h, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+            SelectObject(hdcMem, hOld);
+            DeleteDC(hdcMem);
+        }
+        EndPaint(hWnd, &ps);
+        return 0;
+    }
+    case WM_CLOSE:
+        DestroyWindow(hWnd);
+        return 0;
+    case WM_DESTROY:
+        PostMessage(hWnd, WM_USER, 0, 0);
+        return 0;
+    }
+    return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double duration, BOOL useDS) {
+    FileInfoData* fd = (FileInfoData*)calloc(1, sizeof(FileInfoData));
+    GetMediaInfo(filePath, duration, useDS, &fd->info);
+
+    // Register window class
+    static BOOL registered = FALSE;
+    if (!registered) {
+        WNDCLASSEX wc = {0};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = FileInfoWndProc;
+        wc.hInstance = GetModuleHandle(0);
+        wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+        wc.lpszClassName = TEXT("MediaShow2Info");
+        wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+        RegisterClassEx(&wc);
+        registered = TRUE;
+    }
+
+    int contentH = 310;
+    if (fd->info.hAlbumArt) contentH = max(contentH, 170);
+    int dlgW = 460, dlgH = contentH + 48;
+
+    HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
+        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+        0, 0, dlgW, dlgH, hParent, NULL, GetModuleHandle(0), NULL);
+
+    SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)fd);
+
+    int y = 12;
+    int vw = fd->info.hAlbumArt ? 200 : 330;
+
+    AddField(hWnd, fd, y, TEXT("File:"), fd->info.fileName, vw); y += 26;
+    AddField(hWnd, fd, y, TEXT("Duration:"), fd->info.duration, vw); y += 26;
+    AddField(hWnd, fd, y, TEXT("Size:"), fd->info.fileSize, vw); y += 26;
+    AddField(hWnd, fd, y, TEXT("Format:"), fd->info.format, vw); y += 26;
+    if (fd->info.codec[0]) { AddField(hWnd, fd, y, TEXT("Codec:"), fd->info.codec, vw); y += 26; }
+    if (fd->info.bitrate[0]) { AddField(hWnd, fd, y, TEXT("Bitrate:"), fd->info.bitrate, vw); y += 26; }
+    if (fd->info.channels[0]) { AddField(hWnd, fd, y, TEXT("Channels:"), fd->info.channels, vw); y += 26; }
+    if (fd->info.sampleRate[0]) { AddField(hWnd, fd, y, TEXT("Sample Rate:"), fd->info.sampleRate, vw); y += 26; }
+    if (fd->info.bitsPerSample[0]) { AddField(hWnd, fd, y, TEXT("Bit Depth:"), fd->info.bitsPerSample, vw); y += 26; }
+    if (fd->info.resolution[0]) { AddField(hWnd, fd, y, TEXT("Resolution:"), fd->info.resolution, vw); y += 26; }
+    if (fd->info.fps[0]) { AddField(hWnd, fd, y, TEXT("FPS:"), fd->info.fps, vw); y += 26; }
+
+    if (fd->info.title[0] || fd->info.artist[0] || fd->info.album[0]) y += 6;
+    if (fd->info.title[0]) { AddField(hWnd, fd, y, TEXT("Title:"), fd->info.title, vw); y += 26; }
+    if (fd->info.artist[0]) { AddField(hWnd, fd, y, TEXT("Artist:"), fd->info.artist, vw); y += 26; }
+    if (fd->info.album[0]) { AddField(hWnd, fd, y, TEXT("Album:"), fd->info.album, vw); y += 26; }
+    if (fd->info.genre[0]) { AddField(hWnd, fd, y, TEXT("Genre:"), fd->info.genre, vw); y += 26; }
+    if (fd->info.year[0]) { AddField(hWnd, fd, y, TEXT("Year:"), fd->info.year, vw); y += 26; }
+
+    // Close button
+    HWND hBtn = CreateWindowEx(0, TEXT("BUTTON"), TEXT("Close"),
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+        dlgW - 90, dlgH - 36, 78, 26, hWnd, (HMENU)IDOK, GetModuleHandle(0), NULL);
+    SendMessage(hBtn, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+
+    // Center on parent
+    RECT pr; GetWindowRect(hParent, &pr);
+    SetWindowPos(hWnd, HWND_TOP, pr.left + (pr.right - pr.left - dlgW) / 2,
+        pr.top + (pr.bottom - pr.top - dlgH) / 2, 0, 0, SWP_NOSIZE);
+
+    // Modal message loop
+    EnableWindow(hParent, FALSE);
+    MSG msg;
+    while (IsWindow(hWnd)) {
+        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) break;
+            if (IsWindow(hWnd) && IsDialogMessage(hWnd, &msg)) continue;
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        } else {
+            WaitMessage();
+        }
+    }
+    EnableWindow(hParent, TRUE);
+    SetFocus(hParent);
+
+    if (fd->info.hAlbumArt) DeleteObject(fd->info.hAlbumArt);
+    free(fd);
+}
+
+/* -----------------------------------------------------------------------
    Main window procedure
    ----------------------------------------------------------------------- */
 static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1584,12 +1881,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             break;
 
         case IDM_FILEINFO: {
-            TCHAR* f = _tcsrchr(state->filePath, TEXT('\\'));
-            f = f ? f + 1 : state->filePath;
-            TCHAR info[256];
-            int dm = (int)(state->duration / 60), ds = (int)state->duration % 60;
-            _sntprintf(info, 256, TEXT("File: %s\nDuration: %02d:%02d"), f, dm, ds);
-            MessageBox(hWnd, info, APP_NAME, MB_OK | MB_ICONINFORMATION);
+            ShowFileInfoDialog(hWnd, state->filePath, state->duration, state->useDirectShow);
             break;
         }
 
