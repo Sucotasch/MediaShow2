@@ -1584,12 +1584,28 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     int colW = 400;
     int dlgW = colX + colW + 16 + 40;
 
-    // Calculate height: count all visible fields
+    // Calculate height: count all visible fields dynamically
     int lines = 0;
     lines += 4; // General: File, Duration, Size, Format
-    if (fd->info.codec[0] || fd->info.bitrate[0] || fd->info.channels[0]) lines += 7; // Technical
-    if (fd->info.title[0] || fd->info.artist[0] || fd->info.album[0]) lines += 6; // Tags
-    int dlgH = 32 + lines * 24 + 16; // top margin + fields + bottom margin
+    int techCount = 0;
+    if (fd->info.codec[0]) techCount++;
+    if (fd->info.bitrate[0]) techCount++;
+    if (fd->info.channels[0]) techCount++;
+    if (fd->info.sampleRate[0]) techCount++;
+    if (fd->info.bitsPerSample[0]) techCount++;
+    if (fd->info.resolution[0]) techCount++;
+    if (fd->info.fps[0]) techCount++;
+    lines += techCount;
+    int tagCount = 0;
+    if (fd->info.title[0]) tagCount++;
+    if (fd->info.artist[0]) tagCount++;
+    if (fd->info.album[0]) tagCount++;
+    if (fd->info.track[0]) tagCount++;
+    if (fd->info.genre[0]) tagCount++;
+    if (fd->info.year[0]) tagCount++;
+    lines += tagCount;
+    if (techCount > 0 || tagCount > 0) lines += 2; // section headers + separators
+    int dlgH = 32 + lines * 24 + 16;
 
     HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
         WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE | WS_THICKFRAME | WS_MAXIMIZEBOX,
