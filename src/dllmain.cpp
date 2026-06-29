@@ -1236,13 +1236,28 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
     }
 
     // Duration
-    int dm = (int)(duration / 60), ds = (int)duration % 60;
-    _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
+    if (duration > 0) {
+        int dm = (int)(duration / 60), ds = (int)duration % 60;
+        _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
+    }
 
     // Try MF source reader for technical info
     IMFSourceReader* reader = NULL;
     HRESULT hr = MFCreateSourceReaderFromURL(filePath, NULL, &reader);
     if (SUCCEEDED(hr) && reader) {
+        // Read duration if not provided
+        if (info->duration[0] == 0) {
+            PROPVARIANT durVal;
+            PropVariantInit(&durVal);
+            if (SUCCEEDED(reader->GetPresentationAttribute(MF_SOURCE_READER_MEDIASOURCE, MF_PD_DURATION, &durVal))) {
+                if (durVal.vt == VT_I8) {
+                    double dur = durVal.hVal.QuadPart / 10000000.0;
+                    int dm = (int)(dur / 60), ds = (int)dur % 60;
+                    _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
+                }
+                PropVariantClear(&durVal);
+            }
+        }
         // Get audio info
         IMFMediaType* audioType = NULL;
         hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &audioType);
@@ -1343,7 +1358,7 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         hr = shellItem->QueryInterface(IID_IShellItemImageFactory, (void**)&imgFactory);
         if (SUCCEEDED(hr) && imgFactory) {
             SIZE sz = {200, 200};
-            imgFactory->GetImage(sz, SIIGBF_ICONONLY, &info->hAlbumArt);
+            imgFactory->GetImage(sz, 0x0004, &info->hAlbumArt); // SIIGBF_THUMBNAIL = 0x0004
             imgFactory->Release();
         }
         shellItem->Release();
@@ -1420,8 +1435,24 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
         registered = TRUE;
     }
 
-    int contentH = 310;
-    if (fd->info.hAlbumArt) contentH = max(contentH, 170);
+    // Count fields to calculate height dynamically
+    int fieldCount = 4; // File, Duration, Size, Format always shown
+    if (fd->info.codec[0]) fieldCount++;
+    if (fd->info.bitrate[0]) fieldCount++;
+    if (fd->info.channels[0]) fieldCount++;
+    if (fd->info.sampleRate[0]) fieldCount++;
+    if (fd->info.bitsPerSample[0]) fieldCount++;
+    if (fd->info.resolution[0]) fieldCount++;
+    if (fd->info.fps[0]) fieldCount++;
+    int tagCount = 0;
+    if (fd->info.title[0]) tagCount++;
+    if (fd->info.artist[0]) tagCount++;
+    if (fd->info.album[0]) tagCount++;
+    if (fd->info.genre[0]) tagCount++;
+    if (fd->info.year[0]) tagCount++;
+
+    int contentH = 12 + fieldCount * 26;
+    if (tagCount > 0) contentH += 6 + tagCount * 26;
     int dlgW = 460, dlgH = contentH + 48;
 
     HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
@@ -1445,7 +1476,7 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     if (fd->info.resolution[0]) { AddField(hWnd, fd, y, TEXT("Resolution:"), fd->info.resolution, vw); y += 26; }
     if (fd->info.fps[0]) { AddField(hWnd, fd, y, TEXT("FPS:"), fd->info.fps, vw); y += 26; }
 
-    if (fd->info.title[0] || fd->info.artist[0] || fd->info.album[0]) y += 6;
+    if (tagCount > 0) y += 6;
     if (fd->info.title[0]) { AddField(hWnd, fd, y, TEXT("Title:"), fd->info.title, vw); y += 26; }
     if (fd->info.artist[0]) { AddField(hWnd, fd, y, TEXT("Artist:"), fd->info.artist, vw); y += 26; }
     if (fd->info.album[0]) { AddField(hWnd, fd, y, TEXT("Album:"), fd->info.album, vw); y += 26; }
@@ -1881,7 +1912,18 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             break;
 
         case IDM_FILEINFO: {
-            ShowFileInfoDialog(hWnd, state->filePath, state->duration, state->useDirectShow);
+            TCHAR* filePath = state->filePath;
+            double dur = state->duration;
+            BOOL useDS = state->useDirectShow;
+            if (state->showPlaylist && state->playlist && state->playlistCount > 0) {
+                int selIdx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
+                if (selIdx >= 0 && selIdx < state->playlistCount) {
+                    filePath = state->playlist[selIdx];
+                    dur = 0; // will be read from file
+                    useDS = FALSE;
+                }
+            }
+            ShowFileInfoDialog(hWnd, filePath, dur, useDS);
             break;
         }
 
