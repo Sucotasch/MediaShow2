@@ -25,6 +25,8 @@ static const PROPERTYKEY kPKEY_Music_TrackNumber =
     {0x56a87397, 0xfa77, 0x11d3, {0x8a, 0x26, 0x00, 0xc0, 0x4f, 0x68, 0x37, 0x10}, 7};
 static const PROPERTYKEY kPKEY_Audio_EncodingBitrate =
     {0x64440490, 0x468b, 0x11d3, {0x8b, 0x57, 0x00, 0xc0, 0x4f, 0xb9, 0xbd, 0x4f}, 4};
+static const PROPERTYKEY kPKEY_Media_Duration =
+    {0x64440490, 0x468b, 0x11d3, {0x8b, 0x57, 0x00, 0xc0, 0x4f, 0xb9, 0xbd, 0x4f}, 3};
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "uxtheme.lib")
@@ -1386,12 +1388,23 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         }
     }
 
+    // Try IPropertyStore via Shell
+    IPropertyStore* props = NULL;
     IShellItem2* shellItem = NULL;
     hr = SHCreateItemFromParsingName(filePath, NULL, IID_IShellItem2, (void**)&shellItem);
     if (SUCCEEDED(hr) && shellItem) {
-        IPropertyStore* props = NULL;
-        hr = shellItem->GetPropertyStore(GPS_DEFAULT, IID_IPropertyStore, (void**)&props);
-        if (SUCCEEDED(hr) && props) {
+        shellItem->GetPropertyStore(GPS_DEFAULT, IID_IPropertyStore, (void**)&props);
+        // Fallback: try StgOpenStorageEx
+        if (!props) {
+            IStorage* pStorage = NULL;
+            hr = StgOpenStorageEx(filePath, STGM_READ | STGM_SHARE_DENY_WRITE,
+                STGFMT_FILE, 0, NULL, NULL, IID_IStorage, (void**)&pStorage);
+            if (SUCCEEDED(hr) && pStorage) {
+                pStorage->QueryInterface(IID_IPropertyStore, (void**)&props);
+                pStorage->Release();
+            }
+        }
+        if (props) {
             PROPVARIANT val;
 
             // Helper to read string property (handles both VT_LPWSTR and VT_VECTOR|VT_LPWSTR)
@@ -1434,6 +1447,23 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
                     _tcsncpy(info->track, val.pwszVal, 15);
             }
             PropVariantClear(&val);
+
+            // Duration from tags
+            if (info->duration[0] == 0) {
+                PropVariantInit(&val);
+                if (SUCCEEDED(props->GetValue(kPKEY_Media_Duration, &val))) {
+                    if (val.vt == VT_UI8) {
+                        double dur = val.uhVal.QuadPart / 10000000.0;
+                        int dm = (int)(dur / 60), ds = (int)dur % 60;
+                        _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
+                    } else if (val.vt == VT_I8) {
+                        double dur = val.hVal.QuadPart / 10000000.0;
+                        int dm = (int)(dur / 60), ds = (int)dur % 60;
+                        _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
+                    }
+                }
+                PropVariantClear(&val);
+            }
 
             // Year
             PropVariantInit(&val);
