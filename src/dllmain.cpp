@@ -16,6 +16,12 @@
 #include "mf_player.h"
 #include "ds_player.h"
 
+// Property keys not in older SDK versions
+static const PROPERTYKEY kPKEY_Music_AlbumCoverArt =
+    {0x2b842dc0, 0x51d7, 0x4c3b, {0xb1, 0xcc, 0xce, 0x3e, 0x1a, 0x72, 0x9a, 0x41}, 14};
+static const PROPERTYKEY kPKEY_Music_TrackNumber =
+    {0x56a87397, 0xfa77, 0x11d3, {0x8a, 0x26, 0x00, 0xc0, 0x4f, 0x68, 0x37, 0x10}, 7};
+
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "uxtheme.lib")
 
@@ -1193,13 +1199,13 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 
 /* -----------------------------------------------------------------------
-   File Info dialog — read-only metadata panel with album art
+   File Info dialog — structured metadata panel with album art
    ----------------------------------------------------------------------- */
 struct MediaInfo {
     TCHAR fileName[MAX_PATH];
     TCHAR duration[32];
     TCHAR fileSize[32];
-    TCHAR format[128];
+    TCHAR format[64];
     TCHAR codec[64];
     TCHAR bitrate[32];
     TCHAR channels[32];
@@ -1212,14 +1218,43 @@ struct MediaInfo {
     TCHAR album[256];
     TCHAR genre[128];
     TCHAR year[16];
+    TCHAR track[16];
     HBITMAP hAlbumArt;
 };
 
+static HBITMAP LoadAlbumArtFromBytes(BYTE* data, DWORD size) {
+    if (!data || size == 0) return NULL;
+    // Create IStream from bytes
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, size);
+    if (!hMem) return NULL;
+    void* pMem = GlobalLock(hMem);
+    memcpy(pMem, data, size);
+    GlobalUnlock(hMem);
+    IStream* pStream = NULL;
+    HRESULT hr = CreateStreamOnHGlobal(hMem, TRUE, &pStream);
+    if (FAILED(hr) || !pStream) { GlobalFree(hMem); return NULL; }
+    // Use GDI+ to load bitmap from stream
+    // Fallback: save to temp file and load
+    TCHAR tmpPath[MAX_PATH];
+    GetTempPath(MAX_PATH, tmpPath);
+    _tcscat(tmpPath, TEXT("ms2_art.jpg"));
+    HANDLE hFile = CreateFile(tmpPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        DWORD written;
+        WriteFile(hFile, data, size, &written, NULL);
+        CloseHandle(hFile);
+        HBITMAP hBmp = (HBITMAP)LoadImage(NULL, tmpPath, IMAGE_BITMAP, 200, 200, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
+        DeleteFile(tmpPath);
+        pStream->Release();
+        return hBmp;
+    }
+    pStream->Release();
+    return NULL;
+}
+
 static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, MediaInfo* info) {
     memset(info, 0, sizeof(MediaInfo));
-    info->hAlbumArt = NULL;
 
-    // Basic info from file system
     _tcsncpy(info->fileName, filePath, MAX_PATH - 1);
     TCHAR* fname = _tcsrchr(info->fileName, TEXT('\\'));
     if (fname) memmove(info->fileName, fname + 1, (_tcslen(fname + 1) + 1) * sizeof(TCHAR));
@@ -1235,17 +1270,14 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
             _sntprintf(info->fileSize, 32, TEXT("%llu bytes"), sz);
     }
 
-    // Duration
     if (duration > 0) {
         int dm = (int)(duration / 60), ds = (int)duration % 60;
         _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
     }
 
-    // Try MF source reader for technical info
     IMFSourceReader* reader = NULL;
     HRESULT hr = MFCreateSourceReaderFromURL(filePath, NULL, &reader);
     if (SUCCEEDED(hr) && reader) {
-        // Read duration if not provided
         if (info->duration[0] == 0) {
             PROPVARIANT durVal;
             PropVariantInit(&durVal);
@@ -1258,7 +1290,6 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
                 PropVariantClear(&durVal);
             }
         }
-        // Get audio info
         IMFMediaType* audioType = NULL;
         hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &audioType);
         if (SUCCEEDED(hr) && audioType) {
@@ -1283,7 +1314,6 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
                 _sntprintf(info->bitrate, 32, TEXT("%u kbps"), val / 1000);
             audioType->Release();
         }
-        // Get video info
         IMFMediaType* videoType = NULL;
         hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoType);
         if (SUCCEEDED(hr) && videoType) {
@@ -1312,7 +1342,6 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         reader->Release();
     }
 
-    // Tags via IPropertyStore
     IShellItem2* shellItem = NULL;
     hr = SHCreateItemFromParsingName(filePath, NULL, IID_IShellItem2, (void**)&shellItem);
     if (SUCCEEDED(hr) && shellItem) {
@@ -1320,29 +1349,18 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
         hr = shellItem->GetPropertyStore(GPS_DEFAULT, IID_IPropertyStore, (void**)&props);
         if (SUCCEEDED(hr) && props) {
             PROPVARIANT val;
-            PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(PKEY_Title, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                _tcsncpy(info->title, val.pwszVal, 255);
-            PropVariantClear(&val);
-            PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(PKEY_Music_Artist, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                _tcsncpy(info->artist, val.pwszVal, 255);
-            PropVariantClear(&val);
-            PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(PKEY_Music_AlbumTitle, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                _tcsncpy(info->album, val.pwszVal, 255);
-            PropVariantClear(&val);
-            PropVariantInit(&val);
-            if (SUCCEEDED(props->GetValue(PKEY_Music_ContentGroupDescription, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                _tcsncpy(info->genre, val.pwszVal, 127);
-            PropVariantClear(&val);
-            // Try Genre from System.Photo.Keyword or fallback
-            if (info->genre[0] == 0) {
-                PropVariantInit(&val);
-                if (SUCCEEDED(props->GetValue(PKEY_Music_Composer, &val)) && val.vt == VT_LPWSTR && val.pwszVal)
-                    _tcsncpy(info->genre, val.pwszVal, 127);
+            #define READ_STR(pk, dst) \
+                PropVariantInit(&val); \
+                if (SUCCEEDED(props->GetValue(pk, &val)) && val.vt == VT_LPWSTR && val.pwszVal) \
+                    _tcsncpy(dst, val.pwszVal, ARRAYSIZE(dst) - 1); \
                 PropVariantClear(&val);
-            }
+
+            READ_STR(PKEY_Title, info->title)
+            READ_STR(PKEY_Music_Artist, info->artist)
+            READ_STR(PKEY_Music_AlbumTitle, info->album)
+            READ_STR(PKEY_Music_ContentGroupDescription, info->genre)
+            READ_STR(kPKEY_Music_TrackNumber, info->track)
+
             PropVariantInit(&val);
             if (SUCCEEDED(props->GetValue(PKEY_Media_DateReleased, &val))) {
                 if (val.vt == VT_UI4)
@@ -1351,15 +1369,28 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
                     _tcsncpy(info->year, val.pwszVal, 4);
             }
             PropVariantClear(&val);
+
+            // Album art from embedded blob
+            PropVariantInit(&val);
+            if (SUCCEEDED(props->GetValue(kPKEY_Music_AlbumCoverArt, &val)) &&
+                (val.vt & VT_ARRAY) && val.parray && val.parray->rgsabound[0].cElements > 0) {
+                BYTE* pData = (BYTE*)val.parray->pvData;
+                DWORD cbSize = val.parray->rgsabound[0].cElements;
+                info->hAlbumArt = LoadAlbumArtFromBytes(pData, cbSize);
+            }
+            PropVariantClear(&val);
+            #undef READ_STR
             props->Release();
         }
-        // Album art via Shell image factory
-        IShellItemImageFactory* imgFactory = NULL;
-        hr = shellItem->QueryInterface(IID_IShellItemImageFactory, (void**)&imgFactory);
-        if (SUCCEEDED(hr) && imgFactory) {
-            SIZE sz = {200, 200};
-            imgFactory->GetImage(sz, 0x0004, &info->hAlbumArt); // SIIGBF_THUMBNAIL = 0x0004
-            imgFactory->Release();
+        // Fallback: Shell thumbnail
+        if (!info->hAlbumArt) {
+            IShellItemImageFactory* imgFactory = NULL;
+            hr = shellItem->QueryInterface(IID_IShellItemImageFactory, (void**)&imgFactory);
+            if (SUCCEEDED(hr) && imgFactory) {
+                SIZE sz = {200, 200};
+                imgFactory->GetImage(sz, 0x0004, &info->hAlbumArt);
+                imgFactory->Release();
+            }
         }
         shellItem->Release();
     }
@@ -1367,23 +1398,7 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
 
 struct FileInfoData {
     MediaInfo info;
-    HWND hEdit;
-    int editCount;
 };
-
-#define FID_TITLE   1001
-#define FID_VALUE   1002
-
-static void AddField(HWND hParent, FileInfoData* fd, int y, const TCHAR* label, const TCHAR* value, int valueW) {
-    HWND hLabel = CreateWindowEx(0, TEXT("STATIC"), label,
-        WS_CHILD | WS_VISIBLE, 12, y, 100, 20, hParent, NULL, GetModuleHandle(0), NULL);
-    SendMessage(hLabel, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
-
-    HWND hValue = CreateWindowEx(0, TEXT("EDIT"), value,
-        WS_CHILD | WS_VISIBLE | ES_READONLY | ES_AUTOHSCROLL,
-        116, y, valueW, 20, hParent, NULL, GetModuleHandle(0), NULL);
-    SendMessage(hValue, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
-}
 
 static LRESULT CALLBACK FileInfoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -1396,11 +1411,12 @@ static LRESULT CALLBACK FileInfoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
             HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, fd->info.hAlbumArt);
             BITMAP bm;
             GetObject(fd->info.hAlbumArt, sizeof(bm), &bm);
-            int x = 330, y = 12, maxW = 120, maxH = 120;
+            int maxW = 200, maxH = 200;
             double scale = min((double)maxW / bm.bmWidth, (double)maxH / bm.bmHeight);
             int w = (int)(bm.bmWidth * scale), h = (int)(bm.bmHeight * scale);
+            int x = 20 + (maxW - w) / 2, y = 20 + (maxH - h) / 2;
             SetStretchBltMode(hdc, HALFTONE);
-            StretchBlt(hdc, x + (maxW - w) / 2, y + (maxH - h) / 2, w, h, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+            StretchBlt(hdc, x, y, w, h, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
             SelectObject(hdcMem, hOld);
             DeleteDC(hdcMem);
         }
@@ -1421,7 +1437,6 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     FileInfoData* fd = (FileInfoData*)calloc(1, sizeof(FileInfoData));
     GetMediaInfo(filePath, duration, useDS, &fd->info);
 
-    // Register window class
     static BOOL registered = FALSE;
     if (!registered) {
         WNDCLASSEX wc = {0};
@@ -1435,66 +1450,88 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
         registered = TRUE;
     }
 
-    // Count fields to calculate height dynamically
-    int fieldCount = 4; // File, Duration, Size, Format always shown
-    if (fd->info.codec[0]) fieldCount++;
-    if (fd->info.bitrate[0]) fieldCount++;
-    if (fd->info.channels[0]) fieldCount++;
-    if (fd->info.sampleRate[0]) fieldCount++;
-    if (fd->info.bitsPerSample[0]) fieldCount++;
-    if (fd->info.resolution[0]) fieldCount++;
-    if (fd->info.fps[0]) fieldCount++;
-    int tagCount = 0;
-    if (fd->info.title[0]) tagCount++;
-    if (fd->info.artist[0]) tagCount++;
-    if (fd->info.album[0]) tagCount++;
-    if (fd->info.genre[0]) tagCount++;
-    if (fd->info.year[0]) tagCount++;
-
-    int contentH = 12 + fieldCount * 26;
-    if (tagCount > 0) contentH += 6 + tagCount * 26;
-    int dlgW = 460, dlgH = contentH + 48;
+    int artW = fd->info.hAlbumArt ? 220 : 0;
+    int colX = 12 + artW + 12;
+    int colW = 380 - artW;
+    int dlgW = colX + colW + 12;
+    int dlgH = 480;
 
     HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
         WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
         0, 0, dlgW, dlgH, hParent, NULL, GetModuleHandle(0), NULL);
-
     SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)fd);
 
-    int y = 12;
-    int vw = fd->info.hAlbumArt ? 200 : 330;
+    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    int y = 20;
 
-    AddField(hWnd, fd, y, TEXT("File:"), fd->info.fileName, vw); y += 26;
-    AddField(hWnd, fd, y, TEXT("Duration:"), fd->info.duration, vw); y += 26;
-    AddField(hWnd, fd, y, TEXT("Size:"), fd->info.fileSize, vw); y += 26;
-    AddField(hWnd, fd, y, TEXT("Format:"), fd->info.format, vw); y += 26;
-    if (fd->info.codec[0]) { AddField(hWnd, fd, y, TEXT("Codec:"), fd->info.codec, vw); y += 26; }
-    if (fd->info.bitrate[0]) { AddField(hWnd, fd, y, TEXT("Bitrate:"), fd->info.bitrate, vw); y += 26; }
-    if (fd->info.channels[0]) { AddField(hWnd, fd, y, TEXT("Channels:"), fd->info.channels, vw); y += 26; }
-    if (fd->info.sampleRate[0]) { AddField(hWnd, fd, y, TEXT("Sample Rate:"), fd->info.sampleRate, vw); y += 26; }
-    if (fd->info.bitsPerSample[0]) { AddField(hWnd, fd, y, TEXT("Bit Depth:"), fd->info.bitsPerSample, vw); y += 26; }
-    if (fd->info.resolution[0]) { AddField(hWnd, fd, y, TEXT("Resolution:"), fd->info.resolution, vw); y += 26; }
-    if (fd->info.fps[0]) { AddField(hWnd, fd, y, TEXT("FPS:"), fd->info.fps, vw); y += 26; }
+    // Helper: add section header
+    auto addSection = [&](const TCHAR* title) {
+        y += 4;
+        HWND hs = CreateWindowEx(0, TEXT("STATIC"), title,
+            WS_CHILD | WS_VISIBLE, colX, y, colW, 18, hWnd, NULL, GetModuleHandle(0), NULL);
+        SendMessage(hs, WM_SETFONT, (WPARAM)hFont, TRUE);
+        // Draw underline
+        HDC hdc = GetDC(hWnd);
+        HPEN hPen = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_GRAYTEXT));
+        HPEN hOld = (HPEN)SelectObject(hdc, hPen);
+        MoveToEx(hdc, colX, y + 17, NULL);
+        LineTo(hdc, colX + colW, y + 17);
+        SelectObject(hdc, hOld);
+        DeleteObject(hPen);
+        ReleaseDC(hWnd, hdc);
+        y += 20;
+    };
 
-    if (tagCount > 0) y += 6;
-    if (fd->info.title[0]) { AddField(hWnd, fd, y, TEXT("Title:"), fd->info.title, vw); y += 26; }
-    if (fd->info.artist[0]) { AddField(hWnd, fd, y, TEXT("Artist:"), fd->info.artist, vw); y += 26; }
-    if (fd->info.album[0]) { AddField(hWnd, fd, y, TEXT("Album:"), fd->info.album, vw); y += 26; }
-    if (fd->info.genre[0]) { AddField(hWnd, fd, y, TEXT("Genre:"), fd->info.genre, vw); y += 26; }
-    if (fd->info.year[0]) { AddField(hWnd, fd, y, TEXT("Year:"), fd->info.year, vw); y += 26; }
+    // Helper: add field row
+    auto addField = [&](const TCHAR* label, const TCHAR* value) {
+        if (!value || !value[0]) return;
+        HWND hl = CreateWindowEx(0, TEXT("STATIC"), label,
+            WS_CHILD | WS_VISIBLE, colX, y + 3, 90, 20, hWnd, NULL, GetModuleHandle(0), NULL);
+        SendMessage(hl, WM_SETFONT, (WPARAM)hFont, TRUE);
+        HWND hv = CreateWindowEx(0, TEXT("EDIT"), (TCHAR*)value,
+            WS_CHILD | WS_VISIBLE | ES_READONLY | ES_AUTOHSCROLL,
+            colX + 94, y, colW - 94, 20, hWnd, NULL, GetModuleHandle(0), NULL);
+        SendMessage(hv, WM_SETFONT, (WPARAM)hFont, TRUE);
+        y += 24;
+    };
 
-    // Close button
+    addSection(TEXT("General"));
+    addField(TEXT("File:"), fd->info.fileName);
+    addField(TEXT("Duration:"), fd->info.duration);
+    addField(TEXT("Size:"), fd->info.fileSize);
+    addField(TEXT("Format:"), fd->info.format);
+
+    if (fd->info.codec[0] || fd->info.bitrate[0] || fd->info.channels[0]) {
+        addSection(TEXT("Technical"));
+        addField(TEXT("Codec:"), fd->info.codec);
+        addField(TEXT("Bitrate:"), fd->info.bitrate);
+        addField(TEXT("Channels:"), fd->info.channels);
+        addField(TEXT("Sample Rate:"), fd->info.sampleRate);
+        addField(TEXT("Bit Depth:"), fd->info.bitsPerSample);
+        addField(TEXT("Resolution:"), fd->info.resolution);
+        addField(TEXT("FPS:"), fd->info.fps);
+    }
+
+    if (fd->info.title[0] || fd->info.artist[0] || fd->info.album[0]) {
+        addSection(TEXT("Tags"));
+        addField(TEXT("Title:"), fd->info.title);
+        addField(TEXT("Artist:"), fd->info.artist);
+        addField(TEXT("Album:"), fd->info.album);
+        addField(TEXT("Track:"), fd->info.track);
+        addField(TEXT("Genre:"), fd->info.genre);
+        addField(TEXT("Year:"), fd->info.year);
+    }
+
+    y += 8;
     HWND hBtn = CreateWindowEx(0, TEXT("BUTTON"), TEXT("Close"),
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-        dlgW - 90, dlgH - 36, 78, 26, hWnd, (HMENU)IDOK, GetModuleHandle(0), NULL);
-    SendMessage(hBtn, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+        dlgW - 90, dlgH - 40, 78, 26, hWnd, (HMENU)IDOK, GetModuleHandle(0), NULL);
+    SendMessage(hBtn, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-    // Center on parent
     RECT pr; GetWindowRect(hParent, &pr);
     SetWindowPos(hWnd, HWND_TOP, pr.left + (pr.right - pr.left - dlgW) / 2,
         pr.top + (pr.bottom - pr.top - dlgH) / 2, 0, 0, SWP_NOSIZE);
 
-    // Modal message loop
     EnableWindow(hParent, FALSE);
     MSG msg;
     while (IsWindow(hWnd)) {
