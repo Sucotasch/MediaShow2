@@ -1297,17 +1297,24 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
     IMFSourceReader* reader = NULL;
     HRESULT hr = MFCreateSourceReaderFromURL(filePath, NULL, &reader);
     if (SUCCEEDED(hr) && reader) {
+        // Try to read duration from source reader
         if (info->duration[0] == 0) {
             PROPVARIANT durVal;
             PropVariantInit(&durVal);
-            if (SUCCEEDED(reader->GetPresentationAttribute(MF_SOURCE_READER_MEDIASOURCE, MF_PD_DURATION, &durVal))) {
-                if (durVal.vt == VT_I8) {
-                    double dur = durVal.hVal.QuadPart / 10000000.0;
-                    int dm = (int)(dur / 60), ds = (int)dur % 60;
-                    _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
-                }
+            // Try media source presentation attribute
+            if (FAILED(reader->GetPresentationAttribute(MF_SOURCE_READER_MEDIASOURCE, MF_PD_DURATION, &durVal)) ||
+                durVal.vt != VT_I8) {
                 PropVariantClear(&durVal);
+                PropVariantInit(&durVal);
+                // Try first audio stream
+                hr = reader->GetPresentationAttribute(0, MF_PD_DURATION, &durVal);
             }
+            if (SUCCEEDED(hr) && durVal.vt == VT_I8) {
+                double dur = durVal.hVal.QuadPart / 10000000.0;
+                int dm = (int)(dur / 60), ds = (int)dur % 60;
+                _sntprintf(info->duration, 32, TEXT("%02d:%02d"), dm, ds);
+            }
+            PropVariantClear(&durVal);
         }
         IMFMediaType* audioType = NULL;
         hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &audioType);
@@ -1362,7 +1369,7 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
     }
 
     // Bitrate fallback: calculate from file size and duration
-    if (info->bitrate[0] == 0 && info->duration[0]) {
+    if (info->duration[0]) {
         WIN32_FILE_ATTRIBUTE_DATA fad2;
         if (GetFileAttributesEx(filePath, GetFileExInfoStandard, &fad2)) {
             ULONGLONG sz = ((ULONGLONG)fad2.nFileSizeHigh << 32) | fad2.nFileSizeLow;
@@ -1371,7 +1378,8 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
             double dur = dm * 60.0 + ds;
             if (dur > 0) {
                 UINT32 kbps = (UINT32)((sz * 8) / (dur * 1000));
-                _sntprintf(info->bitrate, 32, TEXT("%u kbps"), kbps);
+                if (kbps > 0)
+                    _sntprintf(info->bitrate, 32, TEXT("%u kbps"), kbps);
             }
         }
     }
@@ -1403,11 +1411,13 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
             readString(PKEY_Music_AlbumTitle, info->album, 256);
             readString(PKEY_Music_ContentGroupDescription, info->genre, 128);
 
-            // Track number
+            // Track number - try multiple types
             PropVariantInit(&val);
             if (SUCCEEDED(props->GetValue(kPKEY_Music_TrackNumber, &val))) {
                 if (val.vt == VT_UI4)
                     _sntprintf(info->track, 16, TEXT("%u"), val.ulVal);
+                else if (val.vt == VT_I4)
+                    _sntprintf(info->track, 16, TEXT("%d"), val.lVal);
                 else if (val.vt == VT_LPWSTR && val.pwszVal)
                     _tcsncpy(info->track, val.pwszVal, 15);
             }
