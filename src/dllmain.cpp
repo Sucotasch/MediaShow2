@@ -1107,10 +1107,12 @@ static LRESULT CALLBACK PlaylistProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         if (state) {
             switch (wParam) {
             case VK_ESCAPE:
-                PostMessage(state->hMainWnd, WM_CLOSE, 0, 0);
+                if (state->hParentWnd && IsWindow(state->hParentWnd))
+                    PostMessage(state->hParentWnd, WM_CLOSE, 0, 0);
                 return 0;
             case VK_F11:
-                SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+                if (!state->showPlaylist)
+                    SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
                 return 0;
             case VK_SPACE:
                 SendMessage(state->hMainWnd, WM_COMMAND, IDM_PLAY, 0);
