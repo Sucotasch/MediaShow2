@@ -23,7 +23,7 @@
 static const PROPERTYKEY kPKEY_Music_AlbumCoverArt =
     {0x2b842dc0, 0x51d7, 0x4c3b, {0xb1, 0xcc, 0xce, 0x3e, 0x1a, 0x72, 0x9a, 0x41}, 14};
 static const PROPERTYKEY kPKEY_Music_TrackNumber =
-    {0x56a87397, 0xfa77, 0x11d3, {0x8a, 0x26, 0x00, 0xc0, 0x4f, 0x68, 0x37, 0x10}, 7};
+    {0x56A3372E, 0xCE9C, 0x11D2, {0x9F, 0x0E, 0x00, 0x60, 0x97, 0xC6, 0x86, 0xF6}, 7};
 static const PROPERTYKEY kPKEY_Audio_EncodingBitrate =
     {0x64440490, 0x4C8B, 0x11D1, {0x8B, 0x70, 0x08, 0x00, 0x36, 0xB1, 0x1A, 0x03}, 4};
 static const PROPERTYKEY kPKEY_Media_Duration =
@@ -1582,7 +1582,7 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     int artW = 272;  // 16 + 240 + 16
     int colX = artW;
     int colW = 400;
-    int dlgW = colX + colW + 16;
+    int dlgW = colX + colW + 16 + 40;
 
     // Calculate height: count all visible fields
     int lines = 0;
@@ -1592,7 +1592,7 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     int dlgH = 32 + lines * 24 + 16; // top margin + fields + bottom margin
 
     HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, TEXT("MediaShow2Info"), TEXT("File Info"),
-        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE | WS_THICKFRAME | WS_MAXIMIZEBOX,
         0, 0, dlgW, dlgH, hParent, NULL, GetModuleHandle(0), NULL);
     SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)fd);
 
