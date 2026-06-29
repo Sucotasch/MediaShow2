@@ -850,6 +850,7 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
 }
 
 static LRESULT CALLBACK VolSliderProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
+static LRESULT CALLBACK PlaylistProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 
 /* -----------------------------------------------------------------------
    Controls creation (Defect #1 fix: CCS_NORESIZE|CCS_NOPARENTALIGN)
@@ -1097,6 +1098,33 @@ static LRESULT CALLBACK VolSliderProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 }
 
 /* -----------------------------------------------------------------------
+    Playlist ListView subclass: intercept keys when playlist has focus
+    ----------------------------------------------------------------------- */
+static LRESULT CALLBACK PlaylistProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                     UINT_PTR subclassId, DWORD_PTR refData) {
+    if (msg == WM_KEYDOWN) {
+        PluginState* state = (PluginState*)refData;
+        if (state) {
+            switch (wParam) {
+            case VK_ESCAPE:
+                PostMessage(state->hMainWnd, WM_CLOSE, 0, 0);
+                return 0;
+            case VK_F11:
+                SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+                return 0;
+            case VK_SPACE:
+                SendMessage(state->hMainWnd, WM_COMMAND, IDM_PLAY, 0);
+                return 0;
+            case 0x4D: // M
+                SendMessage(state->hMainWnd, WM_COMMAND, IDM_MUTE, 0);
+                return 0;
+            }
+        }
+    }
+    return DefSubclassProc(hWnd, msg, wParam, lParam);
+}
+
+/* -----------------------------------------------------------------------
    Video window subclass (Defect #14 fix: double-click triggers fullscreen,
                           Defect #3 fix:  WM_MOUSEWHEEL removed)
    ----------------------------------------------------------------------- */
@@ -1202,6 +1230,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         lvc.cx = 55;   lvc.pszText = (TCHAR*)TEXT("Type");  ListView_InsertColumn(state->hPlaylist, 2, &lvc);
         lvc.cx = 120;  lvc.pszText = (TCHAR*)TEXT("Date");  ListView_InsertColumn(state->hPlaylist, 3, &lvc);
         ShowWindow(state->hPlaylist, SW_HIDE);
+        SetWindowSubclass(state->hPlaylist, PlaylistProc, 0, (DWORD_PTR)state);
 
         state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
         state->pDSPlayer = DSPlayer_Create(state->hVideoWnd, OnMFEnd, state);
@@ -1613,6 +1642,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             DSPlayer_Destroy(state->pDSPlayer);
             RemoveWindowSubclass(state->hVideoWnd, VideoWndProc, 0);
             RemoveWindowSubclass(state->hVolSlider, VolSliderProc, 0);
+            RemoveWindowSubclass(state->hPlaylist, PlaylistProc, 0);
             if (state->hFont)     DeleteObject(state->hFont);
             if (state->hIconFont) DeleteObject(state->hIconFont);
             if (state->hBackBrush) DeleteObject(state->hBackBrush);
