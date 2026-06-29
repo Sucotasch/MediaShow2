@@ -1779,32 +1779,28 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     if (files && count > 0) {
                         int added = 0;
                         for (int i = 0; i < count; i++) {
-                            if (IsDuplicate(existState, files[i])) continue;
-                            files[added] = files[i];
-                            dates[added] = dates[i];
-                            files[i] = NULL;
-                            added++;
-                        }
-                        if (added > 0) {
-                            int oldCount = existState->playlistCount;
-                            int newTotal = oldCount + added;
+                            if (IsDuplicate(existState, files[i])) {
+                                free(files[i]);
+                                continue;
+                            }
+                            int newTotal = existState->playlistCount + 1;
                             TCHAR** newPl = (TCHAR**)realloc(existState->playlist, newTotal * sizeof(TCHAR*));
                             FILETIME* newDt = (FILETIME*)realloc(existState->fileDates, newTotal * sizeof(FILETIME));
                             if (newPl && newDt) {
-                                for (int i = 0; i < added; i++) {
-                                    newPl[oldCount + i] = files[i];
-                                    newDt[oldCount + i] = dates[i];
-                                }
+                                newPl[existState->playlistCount] = files[i];
+                                newDt[existState->playlistCount] = dates[i];
                                 existState->playlist = newPl;
                                 existState->fileDates = newDt;
                                 existState->playlistCount = newTotal;
-                                UpdatePlaylist(existState);
-                                SavePlaylist(existState);
+                                added++;
                             } else {
-                                for (int i = 0; i < added; i++) free(files[i]);
+                                free(files[i]);
                             }
                         }
-                        for (int i = 0; i < count; i++) free(files[i]);
+                        if (added > 0) {
+                            UpdatePlaylist(existState);
+                            SavePlaylist(existState);
+                        }
                         free(files); free(dates);
                     }
                 }
@@ -1941,27 +1937,24 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
             if (files && count > 0) {
                 int added = 0;
                 for (int i = 0; i < count; i++) {
-                    if (IsDuplicate(state, files[i])) continue;
-                    files[added] = files[i];
-                    dates[added] = dates[i];
-                    files[i] = NULL;
-                    added++;
-                }
-                if (added > 0) {
-                    int newTotal = state->playlistCount + added;
+                    if (IsDuplicate(state, files[i])) {
+                        free(files[i]);
+                        continue;
+                    }
+                    int newTotal = state->playlistCount + 1;
                     TCHAR** np = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
                     FILETIME* nd = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
                     if (np && nd) {
-                        for (int i = 0; i < added; i++) {
-                            np[state->playlistCount + i] = files[i];
-                            nd[state->playlistCount + i] = dates[i];
-                        }
+                        np[state->playlistCount] = files[i];
+                        nd[state->playlistCount] = dates[i];
                         state->playlist = np;
                         state->fileDates = nd;
                         state->playlistCount = newTotal;
+                        added++;
+                    } else {
+                        free(files[i]);
                     }
                 }
-                for (int i = 0; i < count; i++) free(files[i]);
                 free(files); free(dates);
             }
         }
