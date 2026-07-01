@@ -2172,11 +2172,63 @@ HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
     MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, w, n);
     HWND h = ListLoadW(ParentWin, w, ShowFlags);
     free(w);
-    return h;
+     return h;
+}
+
+// Detect QuickView mode: check if ParentWin's parent is NOT a lister tab
+static BOOL IsQuickView(HWND ParentWin) {
+    if (!ParentWin) return FALSE;
+    HWND hGrandparent = GetParent(ParentWin);
+    if (!hGrandparent) return FALSE;
+
+    TCHAR className[128] = {0};
+    GetClassName(ParentWin, className, 128);
+    TCHAR dbg[256];
+    _sntprintf(dbg, 256, TEXT("MediaShow2: ParentWin class='%s'\n"), className);
+    OutputDebugString(dbg);
+
+    TCHAR gpClass[128] = {0};
+    GetClassName(hGrandparent, gpClass, 128);
+    _sntprintf(dbg, 256, TEXT("MediaShow2: Grandparent class='%s'\n"), gpClass);
+    OutputDebugString(dbg);
+
+    // Known TC lister class: "TListerForm" or check if parent is TTOTAL_CMD
+    // QuickView panel has a different parent hierarchy
+    TCHAR tcClass[128] = {0};
+    HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
+    if (hTC) {
+        GetClassName(hTC, tcClass, 128);
+        _sntprintf(dbg, 256, TEXT("MediaShow2: TC class='%s'\n"), tcClass);
+        OutputDebugString(dbg);
+    }
+
+    // If grandparent is TC main window → QuickView panel
+    // If grandparent is a lister tab → F3 mode
+    HWND hTopParent = hGrandparent;
+    while (hTopParent) {
+        TCHAR topClass[128] = {0};
+        GetClassName(hTopParent, topClass, 128);
+        if (_tcscmp(topClass, TEXT("TTOTAL_CMD")) == 0) {
+            // Reached TC main window — this is QuickView
+            OutputDebugString(TEXT("MediaShow2: Detected QuickView (grandparent chain reaches TTOTAL_CMD)\n"));
+            return TRUE;
+        }
+        hTopParent = GetParent(hTopParent);
+    }
+
+    OutputDebugString(TEXT("MediaShow2: Detected F3 Lister (grandparent chain does NOT reach TTOTAL_CMD)\n"));
+    return FALSE;
 }
 
 HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     RegisterMainWndClass();
+
+    BOOL quickView = IsQuickView(ParentWin);
+    {
+        TCHAR dbg[256];
+        _sntprintf(dbg, 256, TEXT("MediaShow2: ListLoadW('%s') quickView=%d\n"), FileToLoad, quickView);
+        OutputDebugString(dbg);
+    }
 
     // Append mode: check if existing plugin window is still alive
     static HWND hLastPluginWnd = NULL;
@@ -2366,7 +2418,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     state->playlistIndex = 0;
 
     // Append mode ON: load saved playlist, add new files to it
-    if (state->appendMode) {
+    // Skip entirely in QuickView mode — just play the file
+    if (!quickView && state->appendMode) {
         LoadPlaylist(state);
         // Add current file(s) to loaded playlist
         int oldCount = state->playlistCount;
@@ -2483,16 +2536,20 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         }
         UpdatePlaylist(state);
         SavePlaylist(state);
-    } else {
-        // Append mode OFF: normal flow
+    } else if (!quickView) {
+        // Append mode OFF: normal flow (skip in QuickView)
         RequestSelectedFiles(ParentWin, state);
         if (state->playlistCount <= 1)
             BuildPlaylist(state, NULL, FileToLoad);
     }
 
     // Update showPlaylist based on first file in playlist
-    if (state->playlistCount > 0)
+    // In QuickView mode, always hide playlist
+    if (quickView) {
+        state->showPlaylist = FALSE;
+    } else if (state->playlistCount > 0) {
         state->showPlaylist = IsAudioOnly(state->playlist[0]);
+    }
 
     SetTimer(hWnd, 1, 500, NULL);
     UpdatePlaylist(state);
