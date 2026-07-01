@@ -264,6 +264,8 @@ MediaShow2/
 29. **Duplicate detection:** `IsDuplicate()` — case-insensitive сравнение путей. Проверяется во всех 4 точках append (A1/A2/B1/B2). Дубликаты пропускаются, их файловые строки освобождаются сразу. Новая архитектура: inline append без промежуточного массива — каждый файл обрабатывается immediately.
 30. **Playlist keyboard subclass:** ListView subclass через `SetWindowSubclass` — перехватывает Space/M/Esc/F11 когда фокус на плейлисте. Esc закрывает lister tab (`hParentWnd`). F11 заблокирован когда плейлист видим (серый фон бесполезен).
 31. **File Info dialog:** Модальное окно 480×448px с тремя секциями (General, Technical, Tags). Метаданные: MF source reader (codec, channels, sample rate, bit depth, resolution, FPS) + IPropertyStore (title, artist, album, track, genre, year, duration, bitrate). Обложка через `IShellItemImageFactory` (SIIGBF_THUMBNAIL) с fallback на IPropertyStore blob + IPicture::Render. Текст в ES_READONLY Edit controls (копируется Ctrl+C). Окно resizable (WS_THICKFRAME).
+32. **QuickView detection:** Определение режима быстрого просмотра через `GetParent(ParentWin)` — если parent=NULL это F3 lister, иначе QuickView. В QuickView: пропуск загрузки/сохранения плейлиста, `UpdatePlaylist` не вызывается, `showPlaylist=FALSE`. Сохранённый плейлист остаётся нетронутым.
+33. **Seekbar mouse wheel:** Subclass `SeekbarProc` — колёсико вверх = перемотка вперёд (+10с), вниз = назад (-10с). Согласовано с поведением volume slider.
 
 ### Что НЕ реализовано
 1. **Современный UI** — текущий интерфейс примитивен

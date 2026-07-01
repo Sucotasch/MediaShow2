@@ -869,6 +869,7 @@ static void ShowContextMenu(PluginState* state, int x, int y) {
 }
 
 static LRESULT CALLBACK VolSliderProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
+static LRESULT CALLBACK SeekbarProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 static LRESULT CALLBACK PlaylistProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 
 /* -----------------------------------------------------------------------
@@ -932,6 +933,7 @@ static void CreateControls(PluginState* state) {
     if (state->hSeekbar) {
         SendMessage(state->hSeekbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
         SendMessage(state->hSeekbar, TBM_SETPOS,   TRUE, 0);
+        SetWindowSubclass(state->hSeekbar, SeekbarProc, 0, (DWORD_PTR)state);
     }
 
     state->hVolSlider = CreateWindow(TRACKBAR_CLASS, TEXT(""),
@@ -1111,6 +1113,24 @@ static LRESULT CALLBACK VolSliderProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
         ApplyVolume(state);
         SaveVolume(state);
         UpdateStatus(state);
+        return 0;
+    }
+    return DefSubclassProc(hWnd, msg, wParam, lParam);
+}
+
+/* -----------------------------------------------------------------------
+   Seekbar subclass — mouse wheel: scroll up = forward (+10s), down = back (-10s)
+   ----------------------------------------------------------------------- */
+static LRESULT CALLBACK SeekbarProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                     UINT_PTR subclassId, DWORD_PTR refData) {
+    PluginState* state = (PluginState*)refData;
+    if (msg == WM_MOUSEWHEEL && state) {
+        int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+        if (delta > 0) {
+            SendMessage(state->hMainWnd, WM_COMMAND, IDM_SEEK_FWD, 0);
+        } else {
+            SendMessage(state->hMainWnd, WM_COMMAND, IDM_SEEK_BACK, 0);
+        }
         return 0;
     }
     return DefSubclassProc(hWnd, msg, wParam, lParam);
@@ -2135,6 +2155,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             DSPlayer_Destroy(state->pDSPlayer);
             RemoveWindowSubclass(state->hVideoWnd, VideoWndProc, 0);
             RemoveWindowSubclass(state->hVolSlider, VolSliderProc, 0);
+            RemoveWindowSubclass(state->hSeekbar, SeekbarProc, 0);
             RemoveWindowSubclass(state->hPlaylist, PlaylistProc, 0);
             if (state->hFont)     DeleteObject(state->hFont);
             if (state->hIconFont) DeleteObject(state->hIconFont);
@@ -2175,52 +2196,31 @@ HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
      return h;
 }
 
-// Detect QuickView mode: check if ParentWin's parent is NOT a lister tab
+// Detect QuickView mode: F3 creates standalone TLister (parent=NULL), QuickView is child of TC
+#pragma optimize("", off)
 static BOOL IsQuickView(HWND ParentWin) {
     if (!ParentWin) return FALSE;
-    HWND hGrandparent = GetParent(ParentWin);
-    if (!hGrandparent) return FALSE;
 
-    TCHAR className[128] = {0};
-    GetClassName(ParentWin, className, 128);
+    HWND hParent = GetParent(ParentWin);
+    TCHAR pcClass[128] = {0};
+    GetClassName(ParentWin, pcClass, 128);
     TCHAR dbg[256];
-    _sntprintf(dbg, 256, TEXT("MediaShow2: ParentWin class='%s'\n"), className);
+    _sntprintf(dbg, 256, TEXT("MediaShow2: ParentWin='%s' parent=%p\n"), pcClass, hParent);
     OutputDebugString(dbg);
 
-    TCHAR gpClass[128] = {0};
-    GetClassName(hGrandparent, gpClass, 128);
-    _sntprintf(dbg, 256, TEXT("MediaShow2: Grandparent class='%s'\n"), gpClass);
-    OutputDebugString(dbg);
-
-    // Known TC lister class: "TListerForm" or check if parent is TTOTAL_CMD
-    // QuickView panel has a different parent hierarchy
-    TCHAR tcClass[128] = {0};
-    HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
-    if (hTC) {
-        GetClassName(hTC, tcClass, 128);
-        _sntprintf(dbg, 256, TEXT("MediaShow2: TC class='%s'\n"), tcClass);
-        OutputDebugString(dbg);
+    // F3 lister: ParentWin is TLister with parent=NULL (standalone window)
+    // QuickView: ParentWin is child of TC main window (parent != NULL)
+    if (hParent == NULL) {
+        OutputDebugString(TEXT("MediaShow2: → F3 Lister (parent=NULL)\n"));
+        return FALSE;
     }
-
-    // If grandparent is TC main window → QuickView panel
-    // If grandparent is a lister tab → F3 mode
-    HWND hTopParent = hGrandparent;
-    while (hTopParent) {
-        TCHAR topClass[128] = {0};
-        GetClassName(hTopParent, topClass, 128);
-        if (_tcscmp(topClass, TEXT("TTOTAL_CMD")) == 0) {
-            // Reached TC main window — this is QuickView
-            OutputDebugString(TEXT("MediaShow2: Detected QuickView (grandparent chain reaches TTOTAL_CMD)\n"));
-            return TRUE;
-        }
-        hTopParent = GetParent(hTopParent);
-    }
-
-    OutputDebugString(TEXT("MediaShow2: Detected F3 Lister (grandparent chain does NOT reach TTOTAL_CMD)\n"));
-    return FALSE;
+    OutputDebugString(TEXT("MediaShow2: → QuickView (parent!=NULL)\n"));
+    return TRUE;
 }
+#pragma optimize("", on)
 
 HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
+    OutputDebugString(TEXT("MediaShow2: >>> ListLoadW ENTERED <<<\n"));
     RegisterMainWndClass();
 
     BOOL quickView = IsQuickView(ParentWin);
@@ -2234,7 +2234,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     static HWND hLastPluginWnd = NULL;
     if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
         PluginState* existState = GetState(hLastPluginWnd);
-        if (existState && existState->appendMode) {
+        if (existState && existState->appendMode && !IsQuickView(ParentWin)) {
             // Get selected files from TC
             HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
             if (hTC) {
@@ -2419,8 +2419,19 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     // Append mode ON: load saved playlist, add new files to it
     // Skip entirely in QuickView mode — just play the file
+    {
+        TCHAR dbg[256];
+        _sntprintf(dbg, 256, TEXT("MediaShow2: quickView=%d appendMode=%d playlistCount=%d\n"),
+            quickView, state->appendMode, state->playlistCount);
+        OutputDebugString(dbg);
+    }
     if (!quickView && state->appendMode) {
         LoadPlaylist(state);
+        {
+            TCHAR dbg[256];
+            _sntprintf(dbg, 256, TEXT("MediaShow2: After LoadPlaylist count=%d\n"), state->playlistCount);
+            OutputDebugString(dbg);
+        }
         // Add current file(s) to loaded playlist
         int oldCount = state->playlistCount;
         // Try to get selected files from TC
@@ -2550,9 +2561,17 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     } else if (state->playlistCount > 0) {
         state->showPlaylist = IsAudioOnly(state->playlist[0]);
     }
+    {
+        TCHAR dbg[256];
+        _sntprintf(dbg, 256, TEXT("MediaShow2: showPlaylist=%d playlistCount=%d file='%s'\n"),
+            state->showPlaylist, state->playlistCount, state->playlist[0] ? state->playlist[0] : TEXT("?"));
+        OutputDebugString(dbg);
+    }
 
     SetTimer(hWnd, 1, 500, NULL);
-    UpdatePlaylist(state);
+    if (!quickView) {
+        UpdatePlaylist(state);
+    }
     UpdateLayout(state);
 
     // Open and start playback
@@ -2632,7 +2651,9 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 
     state->isPaused     = FALSE;
     state->showPlaylist = IsAudioOnly(FileToLoad);
-    UpdatePlaylist(state);
+    if (!IsQuickView(GetParent(PluginWin))) {
+        UpdatePlaylist(state);
+    }
     UpdateLayout(state);
     UpdateStatus(state);
     UpdateSeekbar(state);
