@@ -2267,6 +2267,16 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
         PluginState* existState = GetState(hLastPluginWnd);
         if (existState && existState->appendMode && !IsQuickView(ParentWin)) {
+            {
+                HWND hExistParent = GetParent(hLastPluginWnd);
+                LONG eStyle = GetWindowLong(hExistParent, GWL_STYLE);
+                LONG eExStyle = GetWindowLong(hExistParent, GWL_EXSTYLE);
+                RECT ewr; GetWindowRect(hExistParent, &ewr);
+                TCHAR dbg[512];
+                _sntprintf(dbg, 512, TEXT("MediaShow2: EXISTING lister=%p style=0x%08X exStyle=0x%08X rect=(%d,%d,%d,%d)\n"),
+                    hExistParent, eStyle, eExStyle, ewr.left, ewr.top, ewr.right, ewr.bottom);
+                OutputDebugString(dbg);
+            }
             // Get selected files from TC
             HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
             if (hTC) {
@@ -2419,6 +2429,16 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                 TCHAR dbg[512];
                 _sntprintf(dbg, 512, TEXT("MediaShow2: BEFORE WM_CLOSE ParentWin=%p style=0x%08X exStyle=0x%08X rect=(%d,%d,%d,%d)\n"),
                     ParentWin, style, exStyle, wr.left, wr.top, wr.right, wr.bottom);
+                OutputDebugString(dbg);
+            }
+            {
+                HWND hExistParent = GetParent(hLastPluginWnd);
+                LONG eStyle = GetWindowLong(hExistParent, GWL_STYLE);
+                LONG eExStyle = GetWindowLong(hExistParent, GWL_EXSTYLE);
+                RECT ewr; GetWindowRect(hExistParent, &ewr);
+                TCHAR dbg[512];
+                _sntprintf(dbg, 512, TEXT("MediaShow2: EXISTING AFTER_APPEND lister=%p style=0x%08X exStyle=0x%08X rect=(%d,%d,%d,%d)\n"),
+                    hExistParent, eStyle, eExStyle, ewr.left, ewr.top, ewr.right, ewr.bottom);
                 OutputDebugString(dbg);
             }
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
