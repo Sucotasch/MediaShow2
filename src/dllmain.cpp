@@ -2459,6 +2459,16 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         ParentWin, (HMENU)IDC_MAIN, GetModuleHandle(0), NULL);
     if (!hWnd) return NULL;
 
+    // TC sets WS_MAXIMIZE on WS_POPUP lister windows — remove it
+    {
+        LONG st = GetWindowLong(ParentWin, GWL_STYLE);
+        if (st & WS_MAXIMIZE) {
+            SetWindowLong(ParentWin, GWL_STYLE, st & ~WS_MAXIMIZE);
+            SetWindowPos(ParentWin, NULL, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
+    }
+
     PluginState* state = GetState(hWnd);
     if (!state) { DestroyWindow(hWnd); return NULL; }
 
