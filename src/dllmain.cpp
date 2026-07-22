@@ -2412,6 +2412,13 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     }
                 }
             }
+            {
+                LONG style = GetWindowLong(ParentWin, GWL_STYLE);
+                style &= ~WS_MAXIMIZE;
+                SetWindowLong(ParentWin, GWL_STYLE, style);
+                SetWindowPos(ParentWin, NULL, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            }
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
             return NULL;
         }
