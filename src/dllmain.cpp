@@ -44,6 +44,7 @@ static const PROPERTYKEY kPKEY_Media_Duration =
 static TCHAR iniPath[MAX_PATH] = {0};
 static ATOM  mainWndClass      = 0;
 static ATOM  fullscreenWndClass = 0;
+static HWND  s_fixMaximizeWnd  = NULL;
 
 /* -----------------------------------------------------------------------
    Plugin State
@@ -2171,6 +2172,24 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 MFPlayer_GetPosition(state->pMFPlayer);
             UpdateStatus(state);
             UpdateSeekbar(state);
+        } else if (wParam == 9998) {
+            KillTimer(hWnd, 9998);
+            TCHAR dbg[256];
+            if (s_fixMaximizeWnd && IsWindow(s_fixMaximizeWnd)) {
+                LONG st = GetWindowLong(s_fixMaximizeWnd, GWL_STYLE);
+                _sntprintf(dbg, 256, TEXT("MediaShow2: TIMER 9998 lister=%p style=0x%08X WS_MAX=%d\n"),
+                    s_fixMaximizeWnd, st, (st & WS_MAXIMIZE) ? 1 : 0);
+                OutputDebugString(dbg);
+                if (st & WS_MAXIMIZE) {
+                    SetWindowLong(s_fixMaximizeWnd, GWL_STYLE, st & ~WS_MAXIMIZE);
+                    SetWindowPos(s_fixMaximizeWnd, NULL, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+                    OutputDebugString(TEXT("MediaShow2: TIMER removed WS_MAXIMIZE\n"));
+                }
+            } else {
+                OutputDebugString(TEXT("MediaShow2: TIMER 9998 — invalid window\n"));
+            }
+            s_fixMaximizeWnd = NULL;
         }
         return 0;
 
@@ -2270,11 +2289,12 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
             {
                 HWND hExistParent = GetParent(hLastPluginWnd);
                 LONG eStyle = GetWindowLong(hExistParent, GWL_STYLE);
-                LONG eExStyle = GetWindowLong(hExistParent, GWL_EXSTYLE);
                 RECT ewr; GetWindowRect(hExistParent, &ewr);
-                TCHAR dbg[512];
-                _sntprintf(dbg, 512, TEXT("MediaShow2: EXISTING lister=%p style=0x%08X exStyle=0x%08X rect=(%d,%d,%d,%d)\n"),
-                    hExistParent, eStyle, eExStyle, ewr.left, ewr.top, ewr.right, ewr.bottom);
+                TCHAR dbg[256];
+                _sntprintf(dbg, 256, TEXT("MediaShow2: EXISTING lister=%p style=0x%08X WS_MAX=%d rect=(%d,%d,%d,%d) size=(%d,%d)\n"),
+                    hExistParent, eStyle, (eStyle & WS_MAXIMIZE) ? 1 : 0,
+                    ewr.left, ewr.top, ewr.right, ewr.bottom,
+                    ewr.right - ewr.left, ewr.bottom - ewr.top);
                 OutputDebugString(dbg);
             }
             // Get selected files from TC
@@ -2439,6 +2459,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     hExistParent, eStyle, (eStyle & WS_MAXIMIZE) ? 1 : 0);
                 OutputDebugString(dbg);
             }
+            s_fixMaximizeWnd = GetParent(hLastPluginWnd);
+            SetTimer(hLastPluginWnd, 9998, 300, NULL);
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
             return NULL;
         }
