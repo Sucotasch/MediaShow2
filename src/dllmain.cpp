@@ -2434,11 +2434,9 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
             {
                 HWND hExistParent = GetParent(hLastPluginWnd);
                 LONG eStyle = GetWindowLong(hExistParent, GWL_STYLE);
-                LONG eExStyle = GetWindowLong(hExistParent, GWL_EXSTYLE);
-                RECT ewr; GetWindowRect(hExistParent, &ewr);
-                TCHAR dbg[512];
-                _sntprintf(dbg, 512, TEXT("MediaShow2: EXISTING AFTER_APPEND lister=%p style=0x%08X exStyle=0x%08X rect=(%d,%d,%d,%d)\n"),
-                    hExistParent, eStyle, eExStyle, ewr.left, ewr.top, ewr.right, ewr.bottom);
+                TCHAR dbg[256];
+                _sntprintf(dbg, 256, TEXT("MediaShow2: AFTER_APPEND lister=%p style=0x%08X WS_MAX=%d\n"),
+                    hExistParent, eStyle, (eStyle & WS_MAXIMIZE) ? 1 : 0);
                 OutputDebugString(dbg);
             }
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
@@ -2462,10 +2460,15 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     // TC sets WS_MAXIMIZE on WS_POPUP lister windows — remove it
     {
         LONG st = GetWindowLong(ParentWin, GWL_STYLE);
+        TCHAR dbg[256];
+        _sntprintf(dbg, 256, TEXT("MediaShow2: ListLoadW ParentWin=%p style=0x%08X WS_MAX=%d\n"),
+            ParentWin, st, (st & WS_MAXIMIZE) ? 1 : 0);
+        OutputDebugString(dbg);
         if (st & WS_MAXIMIZE) {
             SetWindowLong(ParentWin, GWL_STYLE, st & ~WS_MAXIMIZE);
             SetWindowPos(ParentWin, NULL, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            OutputDebugString(TEXT("MediaShow2: WS_MAXIMIZE removed\n"));
         }
     }
 
