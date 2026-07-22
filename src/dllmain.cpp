@@ -44,6 +44,7 @@ static const PROPERTYKEY kPKEY_Media_Duration =
 static TCHAR iniPath[MAX_PATH] = {0};
 static ATOM  mainWndClass      = 0;
 static ATOM  fullscreenWndClass = 0;
+static HWND  s_pendingListerWnd = NULL;
 
 /* -----------------------------------------------------------------------
    Plugin State
@@ -2171,6 +2172,16 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 MFPlayer_GetPosition(state->pMFPlayer);
             UpdateStatus(state);
             UpdateSeekbar(state);
+        } else if (wParam == 9999) {
+            KillTimer(hWnd, 9999);
+            if (s_pendingListerWnd && IsWindow(s_pendingListerWnd)) {
+                LONG style = GetWindowLong(s_pendingListerWnd, GWL_STYLE);
+                style &= ~WS_MAXIMIZE;
+                SetWindowLong(s_pendingListerWnd, GWL_STYLE, style);
+                SetWindowPos(s_pendingListerWnd, NULL, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            }
+            s_pendingListerWnd = NULL;
         }
         return 0;
 
@@ -2412,6 +2423,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     }
                 }
             }
+            s_pendingListerWnd = ParentWin;
+            SetTimer(hLastPluginWnd, 9999, 100, NULL);
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
             return NULL;
         }
