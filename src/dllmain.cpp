@@ -2412,7 +2412,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     }
                 }
             }
-            SendMessage(ParentWin, WM_CLOSE, 0, 0);
+            PostMessage(ParentWin, WM_CLOSE, 0, 0);
             return NULL;
         }
     }
