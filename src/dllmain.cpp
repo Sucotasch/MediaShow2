@@ -2174,20 +2174,13 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             UpdateSeekbar(state);
         } else if (wParam == 9998) {
             KillTimer(hWnd, 9998);
-            TCHAR dbg[256];
-            if (s_fixMaximizeWnd && IsWindow(s_fixMaximizeWnd)) {
+            if (s_fixMaximizeWnd && IsWindow(s_fixMaximizeWnd) && !state->isFullscreen) {
                 LONG st = GetWindowLong(s_fixMaximizeWnd, GWL_STYLE);
-                _sntprintf(dbg, 256, TEXT("MediaShow2: TIMER 9998 lister=%p style=0x%08X WS_MAX=%d\n"),
-                    s_fixMaximizeWnd, st, (st & WS_MAXIMIZE) ? 1 : 0);
-                OutputDebugString(dbg);
                 if (st & WS_MAXIMIZE) {
                     SetWindowLong(s_fixMaximizeWnd, GWL_STYLE, st & ~WS_MAXIMIZE);
                     SetWindowPos(s_fixMaximizeWnd, NULL, 0, 0, 0, 0,
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-                    OutputDebugString(TEXT("MediaShow2: TIMER removed WS_MAXIMIZE\n"));
                 }
-            } else {
-                OutputDebugString(TEXT("MediaShow2: TIMER 9998 — invalid window\n"));
             }
             s_fixMaximizeWnd = NULL;
         }
