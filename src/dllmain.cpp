@@ -574,6 +574,7 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     if (lastSlash) *lastSlash = 0;
 
     TCHAR** files = (TCHAR**)calloc(selCount, sizeof(TCHAR*));
+    free(state->fileDates);
     state->fileDates = (FILETIME*)calloc(selCount, sizeof(FILETIME));
     int validCount = 0;
 
@@ -653,7 +654,12 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     }
     free(selItems);
 
-    if (validCount == 0) return;
+    if (validCount == 0) {
+        free(files);
+        free(state->fileDates);
+        state->fileDates = NULL;
+        return;
+    }
 
     // Replace: clear old playlist, set new
     FILETIME* savedDates = state->fileDates;
@@ -1552,17 +1558,20 @@ static LRESULT CALLBACK FileInfoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
         FileInfoData* fd = (FileInfoData*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
         if (fd && fd->info.hAlbumArt) {
             HDC hdcMem = CreateCompatibleDC(hdc);
-            HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, fd->info.hAlbumArt);
-            BITMAP bm;
-            GetObject(fd->info.hAlbumArt, sizeof(bm), &bm);
-            int maxW = 240, maxH = 240;
-            double scale = min((double)maxW / bm.bmWidth, (double)maxH / bm.bmHeight);
-            int w = (int)(bm.bmWidth * scale), h = (int)(bm.bmHeight * scale);
-            int x = 16 + (maxW - w) / 2, y = 16 + (maxH - h) / 2;
-            SetStretchBltMode(hdc, HALFTONE);
-            StretchBlt(hdc, x, y, w, h, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
-            SelectObject(hdcMem, hOld);
-            DeleteDC(hdcMem);
+            if (hdcMem) {
+                BITMAP bm;
+                if (GetObject(fd->info.hAlbumArt, sizeof(bm), &bm) && bm.bmWidth > 0 && bm.bmHeight > 0) {
+                    HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, fd->info.hAlbumArt);
+                    int maxW = 240, maxH = 240;
+                    double scale = min((double)maxW / bm.bmWidth, (double)maxH / bm.bmHeight);
+                    int w = (int)(bm.bmWidth * scale), h = (int)(bm.bmHeight * scale);
+                    int x = 16 + (maxW - w) / 2, y = 16 + (maxH - h) / 2;
+                    SetStretchBltMode(hdc, HALFTONE);
+                    StretchBlt(hdc, x, y, w, h, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+                    SelectObject(hdcMem, hOld);
+                }
+                DeleteDC(hdcMem);
+            }
         }
         EndPaint(hWnd, &ps);
         return 0;
@@ -1877,12 +1886,35 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             if (kd->wVKey == VK_DELETE) {
                 int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
                 if (idx >= 0 && idx < state->playlistCount) {
+                    BOOL isCurrentTrack = (idx == state->playlistIndex);
                     free(state->playlist[idx]);
                     memmove(&state->playlist[idx], &state->playlist[idx + 1],
                         (state->playlistCount - idx - 1) * sizeof(TCHAR*));
+                    if (state->fileDates) {
+                        memmove(&state->fileDates[idx], &state->fileDates[idx + 1],
+                            (state->playlistCount - idx - 1) * sizeof(FILETIME));
+                    }
                     state->playlistCount--;
-                    if (state->playlistIndex >= state->playlistCount)
-                        state->playlistIndex = max(0, state->playlistCount - 1);
+                    if (isCurrentTrack) {
+                        if (state->playlistCount > 0) {
+                            int nextIdx = (idx < state->playlistCount) ? idx : 0;
+                            PlayIndex(state, nextIdx);
+                        } else {
+                            KillTimer(state->hMainWnd, IDT_COOLDOWN);
+                            state->switchInProgress = FALSE;
+                            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+                            else                      MFPlayer_Stop(state->pMFPlayer);
+                            state->isPlaying = FALSE;
+                            state->isPaused  = FALSE;
+                            state->position  = 0;
+                            state->filePath[0] = TEXT('\0');
+                        }
+                    } else {
+                        if (state->playlistIndex >= state->playlistCount)
+                            state->playlistIndex = max(0, state->playlistCount - 1);
+                        else if (idx < state->playlistIndex)
+                            state->playlistIndex--;
+                    }
                     UpdatePlaylist(state);
                 }
             } else if (kd->wVKey == VK_RETURN) {
@@ -2559,7 +2591,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     if (quickView) {
         state->showPlaylist = FALSE;
     } else if (state->playlistCount > 0) {
-        state->showPlaylist = IsAudioOnly(state->playlist[0]);
+        state->showPlaylist = IsAudioOnly(FileToLoad);
     }
     {
         TCHAR dbg[256];
