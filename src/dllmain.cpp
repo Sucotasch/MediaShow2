@@ -2342,10 +2342,11 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
         PluginState* existState = GetState(hLastPluginWnd);
         // QuickView: TC reuses ParentWin without calling ListCloseWindow.
-        // Stop MF in previous window to release IMFVideoDisplayControl
+        // Destroy MF in previous window to release IMFVideoDisplayControl
         // so the new window's DSPlayer can use the file/window.
-        if (IsQuickView(ParentWin) && existState && !existState->useDirectShow) {
-            MFPlayer_Stop(existState->pMFPlayer);
+        if (IsQuickView(ParentWin) && existState) {
+            MFPlayer_Destroy(existState->pMFPlayer);
+            existState->pMFPlayer = MFPlayer_Create(existState->hVideoWnd, OnMFEnd, existState);
         }
         if (existState && existState->appendMode && !IsQuickView(ParentWin)) {
             // Get selected files from TC
