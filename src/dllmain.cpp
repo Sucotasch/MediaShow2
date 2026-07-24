@@ -2785,6 +2785,9 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 
     _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
 
+    // Switching from DS to MF — recreate window to release VMR-9
+    if (state->useDirectShow) RecreateVideoWindow(state);
+
     state->useDirectShow = FALSE;
     state->isPlaying = FALSE;
     HRESULT hr = E_FAIL;
