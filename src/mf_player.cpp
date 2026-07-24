@@ -306,14 +306,15 @@ BOOL MFPlayer_AudioNeedsDS(const WCHAR* filePath) {
 
     // Audio codecs that MF can READ from container but CANNOT decode
     // (no MFT decoder registered). Check by Data1 (WAVE format tag in GUID).
-    // Opus: Data1 = 0x4F707573 (ASCII "Opus")
+    // Opus:  Data1 = 0x4F707573 (ASCII "Opus")
     // Vorbis: Data1 = 0x564F5242 (ASCII "VORB")
-    // FLAC:  Data1 = 0xF1AC
     // AC-3:  Data1 = 0xE923AABE
+    // E-AC-3: Data1 = 0xAAC2 (Dolby Digital Plus)
     // DTS:   Data1 = 0x0009
+    // Note: FLAC (0xF1AC) is NOT here — MF supports FLAC since Win 10 1709
     return (subtype.Data1 == 0x4F707573 ||  // Opus
             subtype.Data1 == 0x564F5242 ||  // Vorbis
-            subtype.Data1 == 0x0000F1AC ||  // FLAC
             subtype.Data1 == 0xE923AABE ||  // AC-3
+            subtype.Data1 == 0x00000AAC ||  // E-AC-3 (Dolby Digital Plus)
             subtype.Data1 == 0x00000009);   // DTS
 }
