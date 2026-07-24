@@ -1098,8 +1098,8 @@ static void PlayIndex(PluginState* state, int idx) {
             if (!state->useDirectShow) {
                 MFPlayer_Stop(state->pMFPlayer);
                 MFPlayer_Destroy(state->pMFPlayer);
-                state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
                 RecreateVideoWindow(state);
+                state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             }
             DSPlayer_Stop(state->pDSPlayer);
             hr = DSPlayer_Open(state->pDSPlayer, f);
