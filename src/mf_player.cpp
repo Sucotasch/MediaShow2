@@ -296,7 +296,7 @@ BOOL MFPlayer_AudioNeedsDS(const WCHAR* filePath) {
     hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &audioType);
     if (FAILED(hr) || !audioType) {
         reader->Release();
-        return TRUE; // No audio type → MF can't handle audio → needs DS
+        return FALSE; // No audio stream → video-only file, MF handles fine
     }
 
     GUID subtype = GUID_NULL;
