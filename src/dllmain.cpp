@@ -1061,7 +1061,7 @@ static void RecreateVideoWindow(PluginState* state) {
     HWND hWnd = GetParent(state->hVideoWnd);
     RECT rc;
     GetWindowRect(state->hVideoWnd, &rc);
-    MapWindowPoints(GetParent(state->hVideoWnd), hWnd, (LPPOINT)&rc, 2);
+    MapWindowPoints(HWND_DESKTOP, hWnd, (LPPOINT)&rc, 2);
     int w = rc.right - rc.left;
     int h = rc.bottom - rc.top;
 
