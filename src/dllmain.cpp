@@ -1109,8 +1109,11 @@ static void PlayIndex(PluginState* state, int idx) {
                 DSPlayer_Play(state->pDSPlayer);
             }
         } else if (MFPlayer_HasVideo(state->pMFPlayer)) {
-            // Switching from DS to MF — stop DS first
-            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+            // Switching from DS to MF — stop DS, recreate window for MF
+            if (state->useDirectShow) {
+                DSPlayer_Stop(state->pDSPlayer);
+                RecreateVideoWindow(state);
+            }
             state->useDirectShow = FALSE;
             MFPlayer_Destroy(state->pMFPlayer);
             state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
@@ -1118,7 +1121,10 @@ static void PlayIndex(PluginState* state, int idx) {
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         } else {
             // Audio-only or fallback — stop DS if needed
-            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+            if (state->useDirectShow) {
+                DSPlayer_Stop(state->pDSPlayer);
+                RecreateVideoWindow(state);
+            }
             state->useDirectShow = FALSE;
             MFPlayer_Stop(state->pMFPlayer);
             hr = MFPlayer_Open(state->pMFPlayer, f);
