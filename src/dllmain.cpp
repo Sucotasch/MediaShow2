@@ -1060,18 +1060,23 @@ static void PlayIndex(PluginState* state, int idx) {
         TCHAR* f = state->playlist[idx];
 
         HRESULT hr = E_FAIL;
-        if (state->useDirectShow) {
+        BOOL needsDS = state->pDSPlayer && MFPlayer_AudioNeedsDS(f);
+
+        if (needsDS || state->useDirectShow) {
             DSPlayer_Stop(state->pDSPlayer);
             hr = DSPlayer_Open(state->pDSPlayer, f);
-            if (SUCCEEDED(hr)) DSPlayer_Play(state->pDSPlayer);
+            if (SUCCEEDED(hr)) {
+                state->useDirectShow = TRUE;
+                DSPlayer_Play(state->pDSPlayer);
+            }
         } else if (MFPlayer_HasVideo(state->pMFPlayer)) {
-            // Video: recreate to avoid EVR corruption
+            state->useDirectShow = FALSE;
             MFPlayer_Destroy(state->pMFPlayer);
             state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         } else {
-            // Audio: Stop/Open/Play
+            state->useDirectShow = FALSE;
             MFPlayer_Stop(state->pMFPlayer);
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
@@ -2636,14 +2641,10 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     // Open and start playback
     state->useDirectShow = FALSE;
-    HRESULT hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
-    if (SUCCEEDED(hr)) {
-        state->duration = MFPlayer_GetDuration(state->pMFPlayer);
-        state->videoAr  = MFPlayer_GetAspectRatio(state->pMFPlayer);
-        ApplyVolume(state);
-        MFPlayer_Play(state->pMFPlayer);
-        state->isPlaying = TRUE;
-    } else if (state->pDSPlayer) {
+    HRESULT hr = E_FAIL;
+
+    // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
+    if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {
             state->useDirectShow = TRUE;
@@ -2652,6 +2653,27 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
             ApplyVolume(state);
             DSPlayer_Play(state->pDSPlayer);
             state->isPlaying = TRUE;
+        }
+    }
+
+    if (!state->isPlaying) {
+        hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
+        if (SUCCEEDED(hr)) {
+            state->duration = MFPlayer_GetDuration(state->pMFPlayer);
+            state->videoAr  = MFPlayer_GetAspectRatio(state->pMFPlayer);
+            ApplyVolume(state);
+            MFPlayer_Play(state->pMFPlayer);
+            state->isPlaying = TRUE;
+        } else if (state->pDSPlayer) {
+            hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
+            if (SUCCEEDED(hr)) {
+                state->useDirectShow = TRUE;
+                state->duration = DSPlayer_GetDuration(state->pDSPlayer);
+                state->videoAr  = DSPlayer_GetAspectRatio(state->pDSPlayer);
+                ApplyVolume(state);
+                DSPlayer_Play(state->pDSPlayer);
+                state->isPlaying = TRUE;
+            }
         }
     }
 
@@ -2690,14 +2712,11 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
 
     state->useDirectShow = FALSE;
-    HRESULT hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
-    if (SUCCEEDED(hr)) {
-        state->duration  = MFPlayer_GetDuration(state->pMFPlayer);
-        state->videoAr   = MFPlayer_GetAspectRatio(state->pMFPlayer);
-        ApplyVolume(state);
-        MFPlayer_Play(state->pMFPlayer);
-        state->isPlaying = TRUE;
-    } else if (state->pDSPlayer) {
+    state->isPlaying = FALSE;
+    HRESULT hr = E_FAIL;
+
+    // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
+    if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {
             state->useDirectShow = TRUE;
@@ -2706,6 +2725,27 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
             ApplyVolume(state);
             DSPlayer_Play(state->pDSPlayer);
             state->isPlaying = TRUE;
+        }
+    }
+
+    if (!state->isPlaying) {
+        hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
+        if (SUCCEEDED(hr)) {
+            state->duration  = MFPlayer_GetDuration(state->pMFPlayer);
+            state->videoAr   = MFPlayer_GetAspectRatio(state->pMFPlayer);
+            ApplyVolume(state);
+            MFPlayer_Play(state->pMFPlayer);
+            state->isPlaying = TRUE;
+        } else if (state->pDSPlayer) {
+            hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
+            if (SUCCEEDED(hr)) {
+                state->useDirectShow = TRUE;
+                state->duration  = DSPlayer_GetDuration(state->pDSPlayer);
+                state->videoAr   = DSPlayer_GetAspectRatio(state->pDSPlayer);
+                ApplyVolume(state);
+                DSPlayer_Play(state->pDSPlayer);
+                state->isPlaying = TRUE;
+            }
         }
     }
 
