@@ -2710,6 +2710,9 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
     if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
+        // Recreate hVideoWnd to give VMR-9 a fresh window (MF may hold the old one)
+        RecreateVideoWindow(state);
+        DSPlayer_SetVideoWnd(state->pDSPlayer, state->hVideoWnd);
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {
             state->useDirectShow = TRUE;
@@ -2782,6 +2785,9 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 
     // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
     if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
+        // Recreate hVideoWnd to give VMR-9 a fresh window (MF may hold the old one)
+        RecreateVideoWindow(state);
+        DSPlayer_SetVideoWnd(state->pDSPlayer, state->hVideoWnd);
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {
             state->useDirectShow = TRUE;
