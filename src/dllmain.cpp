@@ -2333,8 +2333,20 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     // Append mode: check if existing plugin window is still alive
     static HWND hLastPluginWnd = NULL;
+    {
+        TCHAR dbg[256];
+        _sntprintf(dbg, 256, TEXT("MediaShow2: ListLoadW hLastPluginWnd=%p alive=%d quickView=%d\n"),
+            hLastPluginWnd, (hLastPluginWnd && IsWindow(hLastPluginWnd)), quickView);
+        OutputDebugString(dbg);
+    }
     if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
         PluginState* existState = GetState(hLastPluginWnd);
+        // QuickView: TC reuses ParentWin without calling ListCloseWindow.
+        // Stop MF in previous window to release IMFVideoDisplayControl
+        // so the new window's DSPlayer can use the file/window.
+        if (IsQuickView(ParentWin) && existState && !existState->useDirectShow) {
+            MFPlayer_Stop(existState->pMFPlayer);
+        }
         if (existState && existState->appendMode && !IsQuickView(ParentWin)) {
             // Get selected files from TC
             HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
@@ -2814,6 +2826,7 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 
 void __stdcall ListCloseWindow(HWND ListWin) {
     PluginState* state = GetState(ListWin);
+    OutputDebugString(TEXT("MediaShow2: ListCloseWindow called\n"));
     if (state) {
         KillTimer(ListWin, IDT_COOLDOWN);
         state->switchInProgress = FALSE;
