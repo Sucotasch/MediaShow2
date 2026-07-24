@@ -2444,7 +2444,9 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         ParentWin, (HMENU)IDC_MAIN, GetModuleHandle(0), NULL);
     if (!hWnd) return NULL;
 
-    // TC sets WS_MAXIMIZE on WS_POPUP lister windows — remove it
+    // TC sets WS_MAXIMIZE on WS_POPUP lister windows — remove it.
+    // Immediate removal may be overridden by TC after we return, so also
+    // schedule a timer to re-check after TC finishes its processing.
     {
         LONG st = GetWindowLong(ParentWin, GWL_STYLE);
         if (st & WS_MAXIMIZE) {
@@ -2453,6 +2455,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         }
     }
+    s_fixMaximizeWnd = ParentWin;
+    SetTimer(hWnd, 9998, 300, NULL);
 
     PluginState* state = GetState(hWnd);
     if (!state) { DestroyWindow(hWnd); return NULL; }
