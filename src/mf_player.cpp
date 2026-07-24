@@ -2,12 +2,14 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfplay.h>
+#include <mfreadwrite.h>
 #include <evr.h>
 #include <stdlib.h>
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfplay.lib")
+#pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 
 struct tagMFPlayer {
@@ -279,4 +281,40 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     }
 
     p->pVideoCtrl->SetVideoPosition(NULL, &wrc);
+}
+
+BOOL MFPlayer_AudioNeedsDS(const WCHAR* filePath) {
+    if (!filePath || !filePath[0]) return FALSE;
+
+    InitMF();
+
+    IMFSourceReader* reader = NULL;
+    HRESULT hr = MFCreateSourceReaderFromURL(filePath, NULL, &reader);
+    if (FAILED(hr) || !reader) return FALSE;
+
+    IMFMediaType* audioType = NULL;
+    hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &audioType);
+    if (FAILED(hr) || !audioType) {
+        reader->Release();
+        return FALSE; // No audio stream → video-only file, MF handles fine
+    }
+
+    GUID subtype = GUID_NULL;
+    audioType->GetGUID(MF_MT_SUBTYPE, &subtype);
+    audioType->Release();
+    reader->Release();
+
+    // Audio codecs that MF can READ from container but CANNOT decode
+    // (no MFT decoder registered). Check by Data1 (WAVE format tag in GUID).
+    // Opus:  Data1 = 0x4F707573 (ASCII "Opus")
+    // Vorbis: Data1 = 0x564F5242 (ASCII "VORB")
+    // AC-3:  Data1 = 0xE923AABE
+    // E-AC-3: Data1 = 0xAAC2 (Dolby Digital Plus)
+    // DTS:   Data1 = 0x0009
+    // Note: FLAC (0xF1AC) is NOT here — MF supports FLAC since Win 10 1709
+    return (subtype.Data1 == 0x4F707573 ||  // Opus
+            subtype.Data1 == 0x564F5242 ||  // Vorbis
+            subtype.Data1 == 0xE923AABE ||  // AC-3
+            subtype.Data1 == 0x00000AAC ||  // E-AC-3 (Dolby Digital Plus)
+            subtype.Data1 == 0x00000009);   // DTS
 }

@@ -28,6 +28,7 @@ double  DSPlayer_GetPosition(DSPlayer* player);
 double  DSPlayer_GetAspectRatio(DSPlayer* player);
 
 void    DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc);
+void    DSPlayer_SetVideoWnd(DSPlayer* player, HWND hVideoWnd);
 
 #ifdef __cplusplus
 }

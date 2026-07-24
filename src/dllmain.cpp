@@ -44,6 +44,7 @@ static const PROPERTYKEY kPKEY_Media_Duration =
 static TCHAR iniPath[MAX_PATH] = {0};
 static ATOM  mainWndClass      = 0;
 static ATOM  fullscreenWndClass = 0;
+static HWND  s_fixMaximizeWnd  = NULL;
 
 /* -----------------------------------------------------------------------
    Plugin State
@@ -574,6 +575,7 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     if (lastSlash) *lastSlash = 0;
 
     TCHAR** files = (TCHAR**)calloc(selCount, sizeof(TCHAR*));
+    free(state->fileDates);
     state->fileDates = (FILETIME*)calloc(selCount, sizeof(FILETIME));
     int validCount = 0;
 
@@ -653,7 +655,12 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     }
     free(selItems);
 
-    if (validCount == 0) return;
+    if (validCount == 0) {
+        free(files);
+        free(state->fileDates);
+        state->fileDates = NULL;
+        return;
+    }
 
     // Replace: clear old playlist, set new
     FILETIME* savedDates = state->fileDates;
@@ -1038,6 +1045,36 @@ static void ToggleFullscreen(PluginState* state) {
     }
 }
 
+// Forward declaration
+static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                     UINT_PTR subclassId, DWORD_PTR refData);
+
+// Destroy orphaned child windows of hVideoWnd (MF leaves rendering windows behind)
+static void DestroyChildVideoWindows(HWND hParent) {
+    HWND hChild;
+    while ((hChild = GetWindow(hParent, GW_CHILD)) != NULL)
+        DestroyWindow(hChild);
+}
+
+// Recreate hVideoWnd to give DS/VMR-9 a fresh window without MF state
+static void RecreateVideoWindow(PluginState* state) {
+    HWND hWnd = GetParent(state->hVideoWnd);
+    RECT rc;
+    GetWindowRect(state->hVideoWnd, &rc);
+    MapWindowPoints(HWND_DESKTOP, hWnd, (LPPOINT)&rc, 2);
+    int w = rc.right - rc.left;
+    int h = rc.bottom - rc.top;
+
+    RemoveWindowSubclass(state->hVideoWnd, VideoWndProc, 0);
+    DestroyWindow(state->hVideoWnd);
+
+    state->hVideoWnd = CreateWindowEx(0, WC_STATIC, TEXT(""),
+        WS_CHILD | WS_VISIBLE | SS_BLACKRECT,
+        rc.left, rc.top, w, h,
+        hWnd, (HMENU)IDC_VIDEO, GetModuleHandle(0), NULL);
+    SetWindowSubclass(state->hVideoWnd, VideoWndProc, 0, (DWORD_PTR)state);
+}
+
 /* -----------------------------------------------------------------------
    Navigate to a playlist item (shared by IDM_PREV, IDM_NEXT, double-click,
    and the WM_PLAYER_TRACK_END handler)
@@ -1053,18 +1090,36 @@ static void PlayIndex(PluginState* state, int idx) {
         TCHAR* f = state->playlist[idx];
 
         HRESULT hr = E_FAIL;
-        if (state->useDirectShow) {
+        BOOL needsDS = state->pDSPlayer && MFPlayer_AudioNeedsDS(f);
+
+        if (needsDS) {
+            // File needs DS — MF holds hVideoWnd via IMFVideoDisplayControl.
+            // Must destroy MF to free the window, then recreate it for VMR-9.
+            if (!state->useDirectShow) {
+                MFPlayer_Stop(state->pMFPlayer);
+                MFPlayer_Destroy(state->pMFPlayer);
+                RecreateVideoWindow(state);
+                DSPlayer_SetVideoWnd(state->pDSPlayer, state->hVideoWnd);
+                state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+            }
             DSPlayer_Stop(state->pDSPlayer);
             hr = DSPlayer_Open(state->pDSPlayer, f);
-            if (SUCCEEDED(hr)) DSPlayer_Play(state->pDSPlayer);
+            if (SUCCEEDED(hr)) {
+                state->useDirectShow = TRUE;
+                DSPlayer_Play(state->pDSPlayer);
+            }
         } else if (MFPlayer_HasVideo(state->pMFPlayer)) {
-            // Video: recreate to avoid EVR corruption
+            // Switching from DS to MF — stop DS first
+            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+            state->useDirectShow = FALSE;
             MFPlayer_Destroy(state->pMFPlayer);
             state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         } else {
-            // Audio: Stop/Open/Play
+            // Audio-only or fallback — stop DS if needed
+            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+            state->useDirectShow = FALSE;
             MFPlayer_Stop(state->pMFPlayer);
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
@@ -1173,12 +1228,21 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                                      UINT_PTR subclassId, DWORD_PTR refData) {
     PluginState* state = (PluginState*)refData;
     switch (msg) {
-    // Defect #10: paint letterbox background black
+    // Defect #10: paint letterbox background black (MF only — DS/VMR-9 handles its own background via D3D)
     case WM_ERASEBKGND: {
-        HDC hdc = (HDC)wParam;
-        RECT rc; GetClientRect(hWnd, &rc);
-        FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+        if (!state || !state->useDirectShow) {
+            HDC hdc = (HDC)wParam;
+            RECT rc; GetClientRect(hWnd, &rc);
+            FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+        }
         return 1;
+    }
+    // When DS/VMR-9 is active, suppress static control's default WM_PAINT
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        BeginPaint(hWnd, &ps);
+        EndPaint(hWnd, &ps);
+        return 0;
     }
     case WM_SIZE: {
         if (state) {
@@ -1552,17 +1616,20 @@ static LRESULT CALLBACK FileInfoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
         FileInfoData* fd = (FileInfoData*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
         if (fd && fd->info.hAlbumArt) {
             HDC hdcMem = CreateCompatibleDC(hdc);
-            HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, fd->info.hAlbumArt);
-            BITMAP bm;
-            GetObject(fd->info.hAlbumArt, sizeof(bm), &bm);
-            int maxW = 240, maxH = 240;
-            double scale = min((double)maxW / bm.bmWidth, (double)maxH / bm.bmHeight);
-            int w = (int)(bm.bmWidth * scale), h = (int)(bm.bmHeight * scale);
-            int x = 16 + (maxW - w) / 2, y = 16 + (maxH - h) / 2;
-            SetStretchBltMode(hdc, HALFTONE);
-            StretchBlt(hdc, x, y, w, h, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
-            SelectObject(hdcMem, hOld);
-            DeleteDC(hdcMem);
+            if (hdcMem) {
+                BITMAP bm;
+                if (GetObject(fd->info.hAlbumArt, sizeof(bm), &bm) && bm.bmWidth > 0 && bm.bmHeight > 0) {
+                    HBITMAP hOld = (HBITMAP)SelectObject(hdcMem, fd->info.hAlbumArt);
+                    int maxW = 240, maxH = 240;
+                    double scale = min((double)maxW / bm.bmWidth, (double)maxH / bm.bmHeight);
+                    int w = (int)(bm.bmWidth * scale), h = (int)(bm.bmHeight * scale);
+                    int x = 16 + (maxW - w) / 2, y = 16 + (maxH - h) / 2;
+                    SetStretchBltMode(hdc, HALFTONE);
+                    StretchBlt(hdc, x, y, w, h, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+                    SelectObject(hdcMem, hOld);
+                }
+                DeleteDC(hdcMem);
+            }
         }
         EndPaint(hWnd, &ps);
         return 0;
@@ -1877,12 +1944,35 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             if (kd->wVKey == VK_DELETE) {
                 int idx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
                 if (idx >= 0 && idx < state->playlistCount) {
+                    BOOL isCurrentTrack = (idx == state->playlistIndex);
                     free(state->playlist[idx]);
                     memmove(&state->playlist[idx], &state->playlist[idx + 1],
                         (state->playlistCount - idx - 1) * sizeof(TCHAR*));
+                    if (state->fileDates) {
+                        memmove(&state->fileDates[idx], &state->fileDates[idx + 1],
+                            (state->playlistCount - idx - 1) * sizeof(FILETIME));
+                    }
                     state->playlistCount--;
-                    if (state->playlistIndex >= state->playlistCount)
-                        state->playlistIndex = max(0, state->playlistCount - 1);
+                    if (isCurrentTrack) {
+                        if (state->playlistCount > 0) {
+                            int nextIdx = (idx < state->playlistCount) ? idx : 0;
+                            PlayIndex(state, nextIdx);
+                        } else {
+                            KillTimer(state->hMainWnd, IDT_COOLDOWN);
+                            state->switchInProgress = FALSE;
+                            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
+                            else                      MFPlayer_Stop(state->pMFPlayer);
+                            state->isPlaying = FALSE;
+                            state->isPaused  = FALSE;
+                            state->position  = 0;
+                            state->filePath[0] = TEXT('\0');
+                        }
+                    } else {
+                        if (state->playlistIndex >= state->playlistCount)
+                            state->playlistIndex = max(0, state->playlistCount - 1);
+                        else if (idx < state->playlistIndex)
+                            state->playlistIndex--;
+                    }
                     UpdatePlaylist(state);
                 }
             } else if (kd->wVKey == VK_RETURN) {
@@ -2139,6 +2229,17 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 MFPlayer_GetPosition(state->pMFPlayer);
             UpdateStatus(state);
             UpdateSeekbar(state);
+        } else if (wParam == 9998) {
+            KillTimer(hWnd, 9998);
+            if (s_fixMaximizeWnd && IsWindow(s_fixMaximizeWnd) && !state->isFullscreen) {
+                LONG st = GetWindowLong(s_fixMaximizeWnd, GWL_STYLE);
+                if (st & WS_MAXIMIZE) {
+                    SetWindowLong(s_fixMaximizeWnd, GWL_STYLE, st & ~WS_MAXIMIZE);
+                    SetWindowPos(s_fixMaximizeWnd, NULL, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+                }
+            }
+            s_fixMaximizeWnd = NULL;
         }
         return 0;
 
@@ -2380,6 +2481,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     }
                 }
             }
+            s_fixMaximizeWnd = GetParent(hLastPluginWnd);
+            SetTimer(hLastPluginWnd, 9998, 300, NULL);
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
             return NULL;
         }
@@ -2397,6 +2500,20 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         0, 0, 100, 100,
         ParentWin, (HMENU)IDC_MAIN, GetModuleHandle(0), NULL);
     if (!hWnd) return NULL;
+
+    // TC sets WS_MAXIMIZE on WS_POPUP lister windows — remove it.
+    // Immediate removal may be overridden by TC after we return, so also
+    // schedule a timer to re-check after TC finishes its processing.
+    {
+        LONG st = GetWindowLong(ParentWin, GWL_STYLE);
+        if (st & WS_MAXIMIZE) {
+            SetWindowLong(ParentWin, GWL_STYLE, st & ~WS_MAXIMIZE);
+            SetWindowPos(ParentWin, NULL, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
+    }
+    s_fixMaximizeWnd = ParentWin;
+    SetTimer(hWnd, 9998, 300, NULL);
 
     PluginState* state = GetState(hWnd);
     if (!state) { DestroyWindow(hWnd); return NULL; }
@@ -2559,7 +2676,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     if (quickView) {
         state->showPlaylist = FALSE;
     } else if (state->playlistCount > 0) {
-        state->showPlaylist = IsAudioOnly(state->playlist[0]);
+        state->showPlaylist = IsAudioOnly(FileToLoad);
     }
     {
         TCHAR dbg[256];
@@ -2576,14 +2693,10 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     // Open and start playback
     state->useDirectShow = FALSE;
-    HRESULT hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
-    if (SUCCEEDED(hr)) {
-        state->duration = MFPlayer_GetDuration(state->pMFPlayer);
-        state->videoAr  = MFPlayer_GetAspectRatio(state->pMFPlayer);
-        ApplyVolume(state);
-        MFPlayer_Play(state->pMFPlayer);
-        state->isPlaying = TRUE;
-    } else if (state->pDSPlayer) {
+    HRESULT hr = E_FAIL;
+
+    // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
+    if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {
             state->useDirectShow = TRUE;
@@ -2592,6 +2705,27 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
             ApplyVolume(state);
             DSPlayer_Play(state->pDSPlayer);
             state->isPlaying = TRUE;
+        }
+    }
+
+    if (!state->isPlaying) {
+        hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
+        if (SUCCEEDED(hr)) {
+            state->duration = MFPlayer_GetDuration(state->pMFPlayer);
+            state->videoAr  = MFPlayer_GetAspectRatio(state->pMFPlayer);
+            ApplyVolume(state);
+            MFPlayer_Play(state->pMFPlayer);
+            state->isPlaying = TRUE;
+        } else if (state->pDSPlayer) {
+            hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
+            if (SUCCEEDED(hr)) {
+                state->useDirectShow = TRUE;
+                state->duration = DSPlayer_GetDuration(state->pDSPlayer);
+                state->videoAr  = DSPlayer_GetAspectRatio(state->pDSPlayer);
+                ApplyVolume(state);
+                DSPlayer_Play(state->pDSPlayer);
+                state->isPlaying = TRUE;
+            }
         }
     }
 
@@ -2630,14 +2764,11 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
 
     state->useDirectShow = FALSE;
-    HRESULT hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
-    if (SUCCEEDED(hr)) {
-        state->duration  = MFPlayer_GetDuration(state->pMFPlayer);
-        state->videoAr   = MFPlayer_GetAspectRatio(state->pMFPlayer);
-        ApplyVolume(state);
-        MFPlayer_Play(state->pMFPlayer);
-        state->isPlaying = TRUE;
-    } else if (state->pDSPlayer) {
+    state->isPlaying = FALSE;
+    HRESULT hr = E_FAIL;
+
+    // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
+    if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {
             state->useDirectShow = TRUE;
@@ -2646,6 +2777,27 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
             ApplyVolume(state);
             DSPlayer_Play(state->pDSPlayer);
             state->isPlaying = TRUE;
+        }
+    }
+
+    if (!state->isPlaying) {
+        hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
+        if (SUCCEEDED(hr)) {
+            state->duration  = MFPlayer_GetDuration(state->pMFPlayer);
+            state->videoAr   = MFPlayer_GetAspectRatio(state->pMFPlayer);
+            ApplyVolume(state);
+            MFPlayer_Play(state->pMFPlayer);
+            state->isPlaying = TRUE;
+        } else if (state->pDSPlayer) {
+            hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
+            if (SUCCEEDED(hr)) {
+                state->useDirectShow = TRUE;
+                state->duration  = DSPlayer_GetDuration(state->pDSPlayer);
+                state->videoAr   = DSPlayer_GetAspectRatio(state->pDSPlayer);
+                ApplyVolume(state);
+                DSPlayer_Play(state->pDSPlayer);
+                state->isPlaying = TRUE;
+            }
         }
     }
 

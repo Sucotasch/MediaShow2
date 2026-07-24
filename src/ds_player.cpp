@@ -6,6 +6,57 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleaut32.lib")
 
+// Find first unconnected output pin on a filter matching a major media type
+static IPin* DS_FindOutputPin(IBaseFilter* pFilter, REFGUID majorType) {
+    IEnumPins* pEnum = NULL;
+    if (FAILED(pFilter->EnumPins(&pEnum)) || !pEnum) return NULL;
+    IPin* pPin = NULL;
+    while (pEnum->Next(1, &pPin, NULL) == S_OK) {
+        PIN_DIRECTION dir;
+        pPin->QueryDirection(&dir);
+        if (dir == PINDIR_OUTPUT) {
+            IPin* pConnected = NULL;
+            pPin->ConnectedTo(&pConnected);
+            if (pConnected) { pConnected->Release(); pPin->Release(); continue; }
+            IEnumMediaTypes* pMtEnum = NULL;
+            if (SUCCEEDED(pPin->EnumMediaTypes(&pMtEnum)) && pMtEnum) {
+                AM_MEDIA_TYPE* pMt = NULL;
+                while (pMtEnum->Next(1, &pMt, NULL) == S_OK) {
+                    BOOL match = (pMt->majortype == majorType);
+                    if (pMt->pbFormat) CoTaskMemFree(pMt->pbFormat);
+                    CoTaskMemFree(pMt);
+                    if (match) { pMtEnum->Release(); pEnum->Release(); return pPin; }
+                }
+                pMtEnum->Release();
+            }
+        }
+        pPin->Release();
+    }
+    pEnum->Release();
+    return NULL;
+}
+
+// Find first unconnected input pin on a filter
+static IPin* DS_FindInputPin(IBaseFilter* pFilter) {
+    IEnumPins* pEnum = NULL;
+    if (FAILED(pFilter->EnumPins(&pEnum)) || !pEnum) return NULL;
+    IPin* pPin = NULL;
+    while (pEnum->Next(1, &pPin, NULL) == S_OK) {
+        PIN_DIRECTION dir;
+        pPin->QueryDirection(&dir);
+        if (dir == PINDIR_INPUT) {
+            IPin* pConnected = NULL;
+            pPin->ConnectedTo(&pConnected);
+            if (pConnected) { pConnected->Release(); pPin->Release(); continue; }
+            pEnum->Release();
+            return pPin;
+        }
+        pPin->Release();
+    }
+    pEnum->Release();
+    return NULL;
+}
+
 struct tagDSPlayer {
     IGraphBuilder*    pGraph;
     IMediaControl*    pControl;
@@ -103,8 +154,56 @@ HRESULT DSPlayer_Open(DSPlayer* player, const WCHAR* filePath) {
     p->pGraph->QueryInterface(IID_IMediaSeeking, (void**)&p->pSeeking);
     p->pGraph->QueryInterface(IID_IBasicAudio,   (void**)&p->pAudio);
 
-    hr = p->pGraph->RenderFile(filePath, NULL);
-    if (FAILED(hr)) { DS_ReleaseGraph(p); return hr; }
+    // Build graph manually with VMR-9 to avoid Overlay Mixer (video outside window).
+    // Falls back to RenderFile if manual build fails.
+    BOOL manualGraphOK = FALSE;
+    IBaseFilter* pSource = NULL;
+    hr = p->pGraph->AddSourceFilter(filePath, L"Source", &pSource);
+    if (SUCCEEDED(hr) && pSource) {
+        IPin* pVideoOut = DS_FindOutputPin(pSource, MEDIATYPE_Video);
+        IPin* pAudioOut = DS_FindOutputPin(pSource, MEDIATYPE_Audio);
+
+        if (pVideoOut) {
+            IBaseFilter* pVMR = NULL;
+            hr = CoCreateInstance(CLSID_VideoMixingRenderer9, NULL, CLSCTX_INPROC_SERVER,
+                IID_IBaseFilter, (void**)&pVMR);
+            if (SUCCEEDED(hr) && pVMR) {
+                p->pGraph->AddFilter(pVMR, L"VMR-9");
+                IPin* pVMRInput = DS_FindInputPin(pVMR);
+                if (pVMRInput) {
+                    HRESULT connectHR = p->pGraph->Connect(pVideoOut, pVMRInput);
+                    pVMRInput->Release();
+                    if (SUCCEEDED(connectHR)) manualGraphOK = TRUE;
+                }
+                pVMR->Release();
+            }
+            pVideoOut->Release();
+        }
+
+        // Render audio (auto-connects decoder + audio renderer via Intelligent Connect)
+        if (pAudioOut) {
+            p->pGraph->Render(pAudioOut);
+            pAudioOut->Release();
+        }
+
+        pSource->Release();
+    }
+
+    // Fallback: if manual build failed, use RenderFile (may pick Overlay Mixer)
+    if (!manualGraphOK) {
+        IEnumFilters* pEnum = NULL;
+        p->pGraph->EnumFilters(&pEnum);
+        if (pEnum) {
+            IBaseFilter* pF = NULL;
+            while (pEnum->Next(1, &pF, NULL) == S_OK) {
+                p->pGraph->RemoveFilter(pF);
+                pF->Release();
+            }
+            pEnum->Release();
+        }
+        hr = p->pGraph->RenderFile(filePath, NULL);
+        if (FAILED(hr)) { DS_ReleaseGraph(p); return hr; }
+    }
 
     p->pGraph->QueryInterface(IID_IVideoWindow, (void**)&p->pVideoWindow);
     p->pGraph->QueryInterface(IID_IBasicVideo,  (void**)&p->pBasicVideo);
@@ -247,4 +346,9 @@ void DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc) {
     if (cw <= 0 || ch <= 0) return;
 
     p->pVideoWindow->SetWindowPosition(0, 0, cw, ch);
+}
+
+void DSPlayer_SetVideoWnd(DSPlayer* player, HWND hVideoWnd) {
+    if (!player) return;
+    ((tagDSPlayer*)player)->hVideoWnd = hVideoWnd;
 }
