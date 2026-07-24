@@ -1045,6 +1045,36 @@ static void ToggleFullscreen(PluginState* state) {
     }
 }
 
+// Forward declaration
+static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                     UINT_PTR subclassId, DWORD_PTR refData);
+
+// Destroy orphaned child windows of hVideoWnd (MF leaves rendering windows behind)
+static void DestroyChildVideoWindows(HWND hParent) {
+    HWND hChild;
+    while ((hChild = GetWindow(hParent, GW_CHILD)) != NULL)
+        DestroyWindow(hChild);
+}
+
+// Recreate hVideoWnd to give DS/VMR-9 a fresh window without MF state
+static void RecreateVideoWindow(PluginState* state) {
+    HWND hWnd = GetParent(state->hVideoWnd);
+    RECT rc;
+    GetWindowRect(state->hVideoWnd, &rc);
+    MapWindowPoints(GetParent(state->hVideoWnd), hWnd, (LPPOINT)&rc, 2);
+    int w = rc.right - rc.left;
+    int h = rc.bottom - rc.top;
+
+    RemoveWindowSubclass(state->hVideoWnd, VideoWndProc, 0);
+    DestroyWindow(state->hVideoWnd);
+
+    state->hVideoWnd = CreateWindowEx(0, WC_STATIC, TEXT(""),
+        WS_CHILD | WS_VISIBLE | SS_BLACKRECT,
+        rc.left, rc.top, w, h,
+        hWnd, (HMENU)IDC_VIDEO, GetModuleHandle(0), NULL);
+    SetWindowSubclass(state->hVideoWnd, VideoWndProc, 0, (DWORD_PTR)state);
+}
+
 /* -----------------------------------------------------------------------
    Navigate to a playlist item (shared by IDM_PREV, IDM_NEXT, double-click,
    and the WM_PLAYER_TRACK_END handler)
@@ -1062,7 +1092,15 @@ static void PlayIndex(PluginState* state, int idx) {
         HRESULT hr = E_FAIL;
         BOOL needsDS = state->pDSPlayer && MFPlayer_AudioNeedsDS(f);
 
-        if (needsDS || state->useDirectShow) {
+        if (needsDS) {
+            // File needs DS — MF holds hVideoWnd via IMFVideoDisplayControl.
+            // Must destroy MF to free the window, then recreate it for VMR-9.
+            if (!state->useDirectShow) {
+                MFPlayer_Stop(state->pMFPlayer);
+                MFPlayer_Destroy(state->pMFPlayer);
+                state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+                RecreateVideoWindow(state);
+            }
             DSPlayer_Stop(state->pDSPlayer);
             hr = DSPlayer_Open(state->pDSPlayer, f);
             if (SUCCEEDED(hr)) {
@@ -1070,12 +1108,16 @@ static void PlayIndex(PluginState* state, int idx) {
                 DSPlayer_Play(state->pDSPlayer);
             }
         } else if (MFPlayer_HasVideo(state->pMFPlayer)) {
+            // Switching from DS to MF — stop DS first
+            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
             state->useDirectShow = FALSE;
             MFPlayer_Destroy(state->pMFPlayer);
             state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         } else {
+            // Audio-only or fallback — stop DS if needed
+            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
             state->useDirectShow = FALSE;
             MFPlayer_Stop(state->pMFPlayer);
             hr = MFPlayer_Open(state->pMFPlayer, f);
@@ -1185,12 +1227,21 @@ static LRESULT CALLBACK VideoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                                      UINT_PTR subclassId, DWORD_PTR refData) {
     PluginState* state = (PluginState*)refData;
     switch (msg) {
-    // Defect #10: paint letterbox background black
+    // Defect #10: paint letterbox background black (MF only — DS/VMR-9 handles its own background via D3D)
     case WM_ERASEBKGND: {
-        HDC hdc = (HDC)wParam;
-        RECT rc; GetClientRect(hWnd, &rc);
-        FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+        if (!state || !state->useDirectShow) {
+            HDC hdc = (HDC)wParam;
+            RECT rc; GetClientRect(hWnd, &rc);
+            FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+        }
         return 1;
+    }
+    // When DS/VMR-9 is active, suppress static control's default WM_PAINT
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        BeginPaint(hWnd, &ps);
+        EndPaint(hWnd, &ps);
+        return 0;
     }
     case WM_SIZE: {
         if (state) {
