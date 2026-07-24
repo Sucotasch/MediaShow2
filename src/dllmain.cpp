@@ -1099,6 +1099,7 @@ static void PlayIndex(PluginState* state, int idx) {
                 MFPlayer_Stop(state->pMFPlayer);
                 MFPlayer_Destroy(state->pMFPlayer);
                 RecreateVideoWindow(state);
+                DSPlayer_SetVideoWnd(state->pDSPlayer, state->hVideoWnd);
                 state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             }
             DSPlayer_Stop(state->pDSPlayer);

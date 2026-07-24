@@ -347,3 +347,8 @@ void DSPlayer_UpdateVideoWindow(DSPlayer* player, RECT* rc) {
 
     p->pVideoWindow->SetWindowPosition(0, 0, cw, ch);
 }
+
+void DSPlayer_SetVideoWnd(DSPlayer* player, HWND hVideoWnd) {
+    if (!player) return;
+    ((tagDSPlayer*)player)->hVideoWnd = hVideoWnd;
+}
