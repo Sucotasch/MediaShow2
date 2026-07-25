@@ -1124,6 +1124,8 @@ static void PlayIndex(PluginState* state, int idx) {
             if (state->useDirectShow) {
                 DSPlayer_Stop(state->pDSPlayer);
                 RecreateVideoWindow(state);
+                MFPlayer_Destroy(state->pMFPlayer);
+                state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             }
             state->useDirectShow = FALSE;
             MFPlayer_Stop(state->pMFPlayer);
@@ -2327,24 +2329,12 @@ static BOOL IsQuickView(HWND ParentWin) {
 #pragma optimize("", on)
 
 HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
-    OutputDebugString(TEXT("MediaShow2: >>> ListLoadW ENTERED <<<\n"));
     RegisterMainWndClass();
 
     BOOL quickView = IsQuickView(ParentWin);
-    {
-        TCHAR dbg[256];
-        _sntprintf(dbg, 256, TEXT("MediaShow2: ListLoadW('%s') quickView=%d\n"), FileToLoad, quickView);
-        OutputDebugString(dbg);
-    }
 
     // Append mode: check if existing plugin window is still alive
     static HWND hLastPluginWnd = NULL;
-    {
-        TCHAR dbg[256];
-        _sntprintf(dbg, 256, TEXT("MediaShow2: ListLoadW hLastPluginWnd=%p alive=%d quickView=%d\n"),
-            hLastPluginWnd, (hLastPluginWnd && IsWindow(hLastPluginWnd)), quickView);
-        OutputDebugString(dbg);
-    }
     if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
         PluginState* existState = GetState(hLastPluginWnd);
         // QuickView: TC reuses ParentWin without calling ListCloseWindow.
@@ -2716,8 +2706,11 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 
     // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
     if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
-        // Recreate hVideoWnd to give VMR-9 a fresh window (MF may hold the old one)
+        // Recreate hVideoWnd and MFPlayer — RecreateVideoWindow destroys old HWND,
+        // so pMFPlayer would have a stale handle if we don't recreate it.
         RecreateVideoWindow(state);
+        MFPlayer_Destroy(state->pMFPlayer);
+        state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
         DSPlayer_SetVideoWnd(state->pDSPlayer, state->hVideoWnd);
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {
@@ -2773,8 +2766,9 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     if (!state) return LISTPLUGIN_ERROR;
 
     // Stop current playback
-    if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
-    else                      MFPlayer_Stop(state->pMFPlayer);
+    BOOL prevWasDS = state->useDirectShow;
+    if (prevWasDS) DSPlayer_Stop(state->pDSPlayer);
+    else           MFPlayer_Stop(state->pMFPlayer);
 
     // Defect #8 fix: update dark mode flag if TC has changed it
     BOOL dm = ((ShowFlags & lcp_darkmode) || (ShowFlags & lcp_darkmodenative)) ? TRUE : FALSE;
@@ -2785,17 +2779,17 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 
     _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
 
-    // Switching from DS to MF — recreate window to release VMR-9
-    if (state->useDirectShow) RecreateVideoWindow(state);
-
     state->useDirectShow = FALSE;
     state->isPlaying = FALSE;
     HRESULT hr = E_FAIL;
 
     // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
     if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
-        // Recreate hVideoWnd to give VMR-9 a fresh window (MF may hold the old one)
+        // New file needs DS. Recreate window for VMR-9 and recreate MFPlayer
+        // so it doesn't hold a stale HWND.
         RecreateVideoWindow(state);
+        MFPlayer_Destroy(state->pMFPlayer);
+        state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
         DSPlayer_SetVideoWnd(state->pDSPlayer, state->hVideoWnd);
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {
@@ -2804,6 +2798,20 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
             state->videoAr   = DSPlayer_GetAspectRatio(state->pDSPlayer);
             ApplyVolume(state);
             DSPlayer_Play(state->pDSPlayer);
+            state->isPlaying = TRUE;
+        }
+    } else if (prevWasDS) {
+        // Switching from DS to MF — recreate window to release VMR-9,
+        // then recreate MFPlayer with the new window handle.
+        RecreateVideoWindow(state);
+        MFPlayer_Destroy(state->pMFPlayer);
+        state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+        hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
+        if (SUCCEEDED(hr)) {
+            state->duration  = MFPlayer_GetDuration(state->pMFPlayer);
+            state->videoAr   = MFPlayer_GetAspectRatio(state->pMFPlayer);
+            ApplyVolume(state);
+            MFPlayer_Play(state->pMFPlayer);
             state->isPlaying = TRUE;
         }
     }
@@ -2842,7 +2850,6 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
 
 void __stdcall ListCloseWindow(HWND ListWin) {
     PluginState* state = GetState(ListWin);
-    OutputDebugString(TEXT("MediaShow2: ListCloseWindow called\n"));
     if (state) {
         KillTimer(ListWin, IDT_COOLDOWN);
         state->switchInProgress = FALSE;
