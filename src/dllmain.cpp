@@ -1120,15 +1120,14 @@ static void PlayIndex(PluginState* state, int idx) {
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         } else {
-            // Audio-only or fallback — stop DS if needed
+            // Fallback — always recreate MFPlayer to avoid stale renderer
             if (state->useDirectShow) {
                 DSPlayer_Stop(state->pDSPlayer);
                 RecreateVideoWindow(state);
-                MFPlayer_Destroy(state->pMFPlayer);
-                state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             }
             state->useDirectShow = FALSE;
-            MFPlayer_Stop(state->pMFPlayer);
+            MFPlayer_Destroy(state->pMFPlayer);
+            state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         }
@@ -2770,6 +2769,12 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     if (prevWasDS) DSPlayer_Stop(state->pDSPlayer);
     else           MFPlayer_Stop(state->pMFPlayer);
 
+    {
+        TCHAR dbg[256];
+        _sntprintf(dbg, 256, TEXT("LLNW: '%s' prevDS=%d useDS=%d\n"), FileToLoad, prevWasDS, state->useDirectShow);
+        OutputDebugString(dbg);
+    }
+
     // Defect #8 fix: update dark mode flag if TC has changed it
     BOOL dm = ((ShowFlags & lcp_darkmode) || (ShowFlags & lcp_darkmodenative)) ? TRUE : FALSE;
     if (dm != state->isDarkMode) {
@@ -2817,12 +2822,30 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     }
 
     if (!state->isPlaying) {
+        {
+            TCHAR dbg[256];
+            _sntprintf(dbg, 256, TEXT("LLNW: fallback MFOpen '%s'\n"), FileToLoad);
+            OutputDebugString(dbg);
+        }
+        // Recreate MFPlayer to avoid stale renderer from previous file
+        MFPlayer_Destroy(state->pMFPlayer);
+        state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
         hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
+        {
+            TCHAR dbg[256];
+            _sntprintf(dbg, 256, TEXT("LLNW: MFOpen hr=0x%08X\n"), hr);
+            OutputDebugString(dbg);
+        }
         if (SUCCEEDED(hr)) {
             state->duration  = MFPlayer_GetDuration(state->pMFPlayer);
             state->videoAr   = MFPlayer_GetAspectRatio(state->pMFPlayer);
             ApplyVolume(state);
-            MFPlayer_Play(state->pMFPlayer);
+            hr = MFPlayer_Play(state->pMFPlayer);
+            {
+                TCHAR dbg[256];
+                _sntprintf(dbg, 256, TEXT("LLNW: MFPlay hr=0x%08X dur=%.1f ar=%.2f\n"), hr, state->duration, state->videoAr);
+                OutputDebugString(dbg);
+            }
             state->isPlaying = TRUE;
         } else if (state->pDSPlayer) {
             hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);

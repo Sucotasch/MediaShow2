@@ -5,6 +5,7 @@
 #include <mfreadwrite.h>
 #include <evr.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mf.lib")
@@ -94,6 +95,11 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
         hr = MFPCreateMediaPlayer(filePath, FALSE, MFP_OPTION_NONE, cb, p->hVideoWnd, &p->pPlayer);
     }
     cb->Release();
+    {
+        WCHAR dbg[256];
+        swprintf(dbg, 256, L"MFOpen: MFP hr=0x%08X pP=%d file='%s'\n", hr, (p->pPlayer != NULL), filePath);
+        OutputDebugStringW(dbg);
+    }
     if (FAILED(hr)) return hr;
 
     hr = p->pPlayer->QueryInterface(IID_IMFVideoDisplayControl, (void**)&p->pVideoCtrl);
@@ -113,8 +119,13 @@ HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
 HRESULT MFPlayer_Play(MFPlayer* player) {
     if (!player) return E_FAIL;
     tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pPlayer) return E_FAIL;
+    if (!p->pPlayer) { OutputDebugStringW(L"MFPlay: pPlayer=NULL!\n"); return E_FAIL; }
     HRESULT hr = p->pPlayer->Play();
+    {
+        WCHAR dbg[128];
+        swprintf(dbg, 128, L"MFPlay: hr=0x%08X\n", hr);
+        OutputDebugStringW(dbg);
+    }
     if (SUCCEEDED(hr)) {
         InterlockedExchange(&p->isPlaying, TRUE);
         InterlockedExchange(&p->isPaused,  FALSE);
