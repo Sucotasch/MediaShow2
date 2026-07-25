@@ -2247,6 +2247,26 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 }
             }
             s_fixMaximizeWnd = NULL;
+        } else if (wParam == IDT_RECREATE && state) {
+            // Deferred RecreateVideoWindow: clears stale MFP rendering state
+            // (e.g. VP9 D3D surfaces on hVideoWnd) after rapid switching settles.
+            KillTimer(hWnd, IDT_RECREATE);
+            if (state->isPlaying && !state->useDirectShow && state->pMFPlayer) {
+                TCHAR filePath[MAX_PATH];
+                _tcsncpy(filePath, state->filePath, MAX_PATH);
+                MFPlayer_Destroy(state->pMFPlayer);
+                RecreateVideoWindow(state);
+                state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+                HRESULT hr = MFPlayer_Open(state->pMFPlayer, filePath);
+                if (SUCCEEDED(hr)) {
+                    state->duration = MFPlayer_GetDuration(state->pMFPlayer);
+                    state->videoAr  = MFPlayer_GetAspectRatio(state->pMFPlayer);
+                    ApplyVolume(state);
+                    MFPlayer_Play(state->pMFPlayer);
+                    state->isPlaying = TRUE;
+                }
+                UpdateLayout(state);
+            }
         }
         return 0;
 
@@ -2254,6 +2274,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     case WM_DESTROY:
         if (state) {
             KillTimer(hWnd, 1);
+            KillTimer(hWnd, IDT_RECREATE);
             if (state->isFullscreen && state->hFullscreenWnd) {
                 SetParent(state->hVideoWnd, hWnd);
                 DestroyWindow(state->hFullscreenWnd);
@@ -2341,7 +2362,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         // so the new window's DSPlayer can use the file/window.
         if (IsQuickView(ParentWin) && existState) {
             MFPlayer_Destroy(existState->pMFPlayer);
-            RecreateVideoWindow(existState);
+            DestroyChildVideoWindows(existState->hVideoWnd);
             existState->pMFPlayer = MFPlayer_Create(existState->hVideoWnd, OnMFEnd, existState);
         }
         if (existState && existState->appendMode && !IsQuickView(ParentWin)) {
@@ -2765,6 +2786,9 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     PluginState* state = GetState(PluginWin);
     if (!state) return LISTPLUGIN_ERROR;
 
+    // Cancel any pending deferred RecreateVideoWindow from previous navigation
+    KillTimer(state->hMainWnd, IDT_RECREATE);
+
     // Stop current playback
     BOOL prevWasDS = state->useDirectShow;
     if (prevWasDS) DSPlayer_Stop(state->pDSPlayer);
@@ -2830,7 +2854,7 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
         }
         // Recreate MFPlayer to avoid stale renderer from previous file
         MFPlayer_Destroy(state->pMFPlayer);
-        RecreateVideoWindow(state);
+        DestroyChildVideoWindows(state->hVideoWnd);
         state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
         hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
         {
@@ -2849,6 +2873,10 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
                 OutputDebugString(dbg);
             }
             state->isPlaying = TRUE;
+            // Deferred RecreateVideoWindow: clears stale MFP state (e.g. VP9 after AVI)
+            // after rapid switching settles. Avoids hang from destroying HWND mid-use.
+            KillTimer(state->hMainWnd, IDT_RECREATE);
+            SetTimer(state->hMainWnd, IDT_RECREATE, 300, NULL);
         } else if (state->pDSPlayer) {
             hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
             if (SUCCEEDED(hr)) {

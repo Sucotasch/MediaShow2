@@ -45,5 +45,6 @@
 #define IDM_CLEARPLAYLIST     4054
 
 #define IDT_COOLDOWN          2
+#define IDT_RECREATE          3
 
 #endif /* PLUGIN_API_H */

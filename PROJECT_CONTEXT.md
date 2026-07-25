@@ -514,3 +514,73 @@ MULTIMEDIA & (ext="AVI" | ext="MPG" | ext="MPEG" | ext="ASF" | ext="VOB" | ext="
 ### Known issues с текущим подходом
 1. **UI внутри TC lister** — TC перехватывает/модифицирует mouse сообщения. Текущий approach работает для базовых контролов (toolbar, trackbar) через CCS_NORESIZE | CCS_NOPARENTALIGN, но может иметь ограничения для более сложного UI.
 2. **Соотношение сторон** — требует进一步 работы (letterboxing реализован, но не идеален)
+
+---
+
+## 8. Критические находки: MF/DS переходы и QuickView
+
+### Системная особенность: pVideoCtrl всегда NULL
+На данной системе `QueryInterface(IID_IMFVideoDisplayControl)` возвращает `E_NOINTERFACE` для ВСЕХ файлов. Это значит:
+- `MFPlayer_HasVideo()` **всегда** возвращает FALSE
+- `pVideoCtrl` **всегда** NULL
+- MFP рендерит видео через собственный внутренний механизм (не через IMFVideoDisplayControl)
+- `SetVideoWindow`, `SetAspectRatioMode`, `SetVideoPosition` **никогда** не вызываются
+- `MFPlayer_GetAspectRatio()` **всегда** возвращает 0
+
+Это не баг — так работает MFP на этой системе. Видео всё равно рендерится.
+
+### Критический баг: hVideoWnd хранит D3D/surface state от предыдущего MFP плеера
+**Проблема:** При переходе с VP9-файла (6.avi) на video-only H.264 файл (7.mp4) видео зависает на последнем кадре VP9. MFP создаёт плеер и запускает его (S_OK), но видео не рендерится.
+
+**Корневая причина:** После `MFPlayer_Destroy`旧 MFP плеер освобождает COM-объекты, но HWND (`hVideoWnd`) сохраняет внутреннее состояние рендеринга (D3D device context, surface format, rendering surface). Новый MFP плеер, созданный на том же HWND, наследует это состояние и не может корректно инициализировать рендер pipeline для другого кодека.
+
+**Доказательство:**
+- `DestroyChildVideoWindows` убивает только child windows MFP, но НЕ сбрасывает состояние самого HWND
+- `RecreateVideoWindow` уничтожает HWND целиком и создаёт новый — MFP получает чистый HWND без наследия
+
+**Почему файлы со звуком работают после VP9:** Аудио-рендер pipeline сбрасывает состояние, которое VP9 оставил в MFP.
+
+**Паттерн переходов:**
+
+| Переход | Результат | Причина |
+|---------|-----------|---------|
+| 6.avi→7.mp4 (video-only) | **FREEZE** | VP9 state на HWND конфликтует с H.264 video-only |
+| 6.avi→5.mp4 (AAC audio) | OK | Аудио pipeline сбрасывает состояние |
+| 1.mp4→7.mp4 (video-only) | OK | H.264→H.264, совместимый state |
+| 2→7, 3→7, 4→7 (video-only→video-only) | OK | H.264→H.264, совместимый state |
+
+**Решение (commit b5adad0):** В `ListLoadNextW` fallback и `ListLoadW` QuickView fix заменить `DestroyChildVideoWindows` на `RecreateVideoWindow`:
+```cpp
+// БЫЛО (не работает):
+MFPlayer_Destroy(state->pMFPlayer);
+DestroyChildVideoWindows(state->hVideoWnd);  // убивает children, HWND остаётся
+state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, ...);
+
+// СТАЛО (работает):
+MFPlayer_Destroy(state->pMFPlayer);
+RecreateVideoWindow(state);  // уничтожает HWND, создаёт новый
+state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, ...);
+```
+
+### QuickView vs F3: разные кодовые пути
+- **F3:** TC вызывает `ListLoadW` (создаёт окно) → `ListLoadNextW` (навигация ↓/↑)
+- **QuickView:** TC вызывает `ListLoadW` (создаёт окно) → `ListLoadNextW` (навигация ↓/↑). TC **НЕ** вызывает `ListCloseWindow` при переключении файлов.
+
+IsQuickView определяется через `GetParent(ParentWin)`: если parent=NULL → F3, иначе → QuickView.
+
+### MFPlayer_Open: всегда возвращает S_OK
+Даже если `QI(IID_IMFVideoDisplayControl)` возвращает `E_NOINTERFACE`, `MFPlayer_Open` возвращает `S_OK` потому что `MFPCreateMediaPlayer`ucceeded. Это делает диагностику сложной — нужно проверять `pVideoCtrl != NULL` отдельно.
+
+### MFPlayer_Stop + Sleep(50)
+`MFPlayer_Stop` вызывает `pPlayer->Stop()` + `Sleep(50)`. Sleep(50) нужен для завершения async операций MFP. Этого может быть недостаточно для полной очистки VP9 pipeline.
+
+### Diagnostic OutputDebugString
+В production коде есть `OutputDebugString` вызовы (отладочные). Их нужно убрать перед релизом. Ищите по паттерну `OutputDebugString` в `dllmain.cpp`.
+
+### Build directory
+- CMake создаёт билд в `build-x64/` (с дефисом)
+- `package.py` ссылается на `build-x64/bin/Release/MediaShow2_x64.dll`
+- **НЕ создавать** `build_x64/` (с подчёркиванием) — это путает
+
+### package.py
+`.wlx64` — это **ZIP-архив** (не голый DLL). Содержит `MediaShow2_x64.dll` + `pluginst.inf`. Используй `python package.py` для упаковки.
