@@ -11,7 +11,7 @@ def create_wlx_archive(dll_path, archive_name, dll_internal_name, inf_content):
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     build_x86 = os.path.join(base_dir, 'build', 'bin', 'Release', 'MediaShow2.dll')
-    build_x64 = os.path.join(base_dir, 'build_x64', 'bin', 'Release', 'MediaShow2_x64.dll')
+    build_x64 = os.path.join(base_dir, 'build-x64', 'bin', 'Release', 'MediaShow2_x64.dll')
     output_dir = base_dir
 
     inf_32 = """[plugininstall]

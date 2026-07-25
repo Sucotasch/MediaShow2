@@ -2341,6 +2341,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         // so the new window's DSPlayer can use the file/window.
         if (IsQuickView(ParentWin) && existState) {
             MFPlayer_Destroy(existState->pMFPlayer);
+            RecreateVideoWindow(existState);
             existState->pMFPlayer = MFPlayer_Create(existState->hVideoWnd, OnMFEnd, existState);
         }
         if (existState && existState->appendMode && !IsQuickView(ParentWin)) {
@@ -2829,6 +2830,7 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
         }
         // Recreate MFPlayer to avoid stale renderer from previous file
         MFPlayer_Destroy(state->pMFPlayer);
+        RecreateVideoWindow(state);
         state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
         hr = MFPlayer_Open(state->pMFPlayer, FileToLoad);
         {
