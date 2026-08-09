@@ -834,6 +834,37 @@ static void UpdateVolumeSlider(PluginState* state) {
     SendMessage(state->hVolSlider, TBM_SETPOS, TRUE, state->volume);
 }
 
+// TC sets the lister window title ("Lister (MediaShow2)-[file]") itself, but
+// only when IT loads a file (ListLoadW / ListLoadNextW). When playback
+// switches through the plugin's own playlist (double-click, Prev/Next, or
+// auto-advance on track end) TC never hears about it — so the title keeps the
+// startup file. Update it here by replacing only the filename inside "[...]",
+// preserving TC's format and locale.
+static void UpdateListerTitle(PluginState* state) {
+    if (!state || !state->hParentWnd || !IsWindow(state->hParentWnd)) return;
+    const TCHAR* slash = _tcsrchr(state->filePath, TEXT('\\'));
+    const TCHAR* fname = slash ? slash + 1 : state->filePath;
+    if (!fname[0]) return;
+
+    TCHAR title[512] = {0};
+    GetWindowText(state->hParentWnd, title, 512);
+    // First '[' — the prefix "Lister (MediaShow2)-" is our own fixed text, so
+    // the first bracket is the real boundary; a '[' inside the FILENAME (e.g.
+    // "file[1].mp4") must not be mistaken for it (hence not _tcsrchr).
+    TCHAR* open = _tcschr(title, TEXT('['));
+    if (!open) return;                      // not TC's bracketed format — leave as is
+    TCHAR* close = _tcschr(open, TEXT(']'));
+    if (!close) return;
+
+    TCHAR newTitle[1024] = {0};
+    size_t prefixLen = (size_t)(open - title);
+    if (prefixLen >= 1024) return;          // pathologically long title — skip
+    memcpy(newTitle, title, prefixLen * sizeof(TCHAR));
+    _tcsncpy_s(newTitle + prefixLen, 1024 - prefixLen, fname, _TRUNCATE);
+    _tcscat_s(newTitle, 1024, close);       // "]…" suffix, preserves locale
+    SetWindowText(state->hParentWnd, newTitle);
+}
+
 /* -----------------------------------------------------------------------
    Theme (Defect #8 fix)
    ----------------------------------------------------------------------- */
@@ -1173,6 +1204,7 @@ static void PlayIndex(PluginState* state, int idx) {
     UpdateLayout(state);
     UpdateStatus(state);
     UpdateSeekbar(state);
+    UpdateListerTitle(state);      // TC doesn't know we switched — update title
     // Keep switchInProgress=TRUE, reset after cooldown timer
     SetTimer(state->hMainWnd, IDT_COOLDOWN, 500, NULL);
 }
@@ -2832,6 +2864,7 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     UpdateLayout(state);
     UpdateStatus(state);
     UpdateSeekbar(state);
+    UpdateListerTitle(state);      // keep title in sync on n/p navigation too
     return LISTPLUGIN_OK;
 }
 
