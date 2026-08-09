@@ -1,14 +1,607 @@
-MediaShow2: LCLListBox 0000000000F60D92 LB_GETSELCOUNT=0
-MediaShow2: LCLListBox 0000000000F60D92 LB_GETCOUNT=8
-MediaShow2: LCLListBox 0000000000380F84 LB_GETSELCOUNT=3
-MediaShow2: LCLListBox 0000000000380F84 LB_GETCOUNT=13
-MediaShow2: Using LCLListBox sel=3
-MediaShow2: LB_GETTEXT[0]='02 - Arpadhazi Margit balladaja.mp3 12 681 905 02.10.2021 18:57 -a--'
-MediaShow2: datePos=000000000AC74ABE (found=1)
-MediaShow2: file[0]='f:\Music\_Folk\Dalriada\2012 - Jegbonto\02 - Arpadhazi Margit balladaja.mp3 12 681 905 '
-MediaShow2: LB_GETTEXT[1]='03 - Galamb.mp3 13 881 408 02.10.2021 18:57 -a--'
-MediaShow2: datePos=000000001409A536 (found=1)
-MediaShow2: file[1]='f:\Music\_Folk\Dalriada\2012 - Jegbonto\03 - Galamb.mp3 13 881 408 '
-MediaShow2: LB_GETTEXT[2]='04 - Vedj meg Lang! - 1. resz.mp3 11 339 207 02.10.2021 18:57 -a--'
-MediaShow2: datePos=0000000014022B1A (found=1)
-MediaShow2: file[2]='f:\Music\_Folk\Dalriada\2012 - Jegbonto\04 - Vedj meg Lang! - 1. resz.mp3 11 339 207 '
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\1.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\1.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\1.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+[0725/153357.549:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\1b9316f3-340f-45ca-baea-7de62551be11: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.549:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\57a6be85-1f09-4976-a599-36e8ae543543: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.549:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\08c8ff23-fad4-4b79-b737-e9c0a1601292: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.550:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\2a470306-6643-46b2-8d4d-0cb7fd78e983: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.550:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\ae960759-3866-4c44-8a3d-cc0ec15ac70a: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.550:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\72c7481f-6535-459a-8a79-f86b7a3423e5: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.550:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\f5edbec3-ebbe-4f85-bfeb-75389e48c8de: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.551:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\43f9e14b-70cc-47ad-a911-d069568af2c0: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.551:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\d68c7747-68f1-4328-b352-0e043b2d9eb6: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.551:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\546741c8-89eb-446a-87f1-16e7b79c985b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.552:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\0314468c-4688-4d01-9a3a-5454c889aa16: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.552:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\0034c2c3-23a1-471f-b2f3-d1e5061e249e: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.552:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\7f431b79-c2f1-4275-8647-e867d5325033: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.552:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\c507412e-81ec-4826-ad71-543bb5d29a2e: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.553:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\d284516d-5a8a-4a20-802c-182be90cc000: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.553:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\fe767d60-3ceb-4e9e-b9a3-ace5884f65be: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.553:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\7ecf242c-cbc2-441e-acc4-017ac530ce4b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.553:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\66bc7d8d-f760-4c5e-8267-8ea9cd8da910: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.554:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\d0e6cba4-a549-420c-a3a7-db7fdfc3bf23: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.554:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\7501e651-612b-41f2-935d-b125834e2d67: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.554:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\cd9f82eb-9d0f-43bb-91a8-894c49845928: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.554:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\09e2b63a-7280-4dcf-85d1-07476dda3ec9: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.555:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\28ca5cc3-5ddf-421a-a06a-331c0b7c0e31: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.555:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\5130d63f-8057-423c-b9d4-b5cbd705c9ab: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.555:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\67b97aec-0c99-4fe7-994d-c2f4bcd8175e: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.556:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\5cb6c5c4-b5b2-4e91-afe0-873b5759e3e7: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.556:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\45840015-698d-40a4-baaf-edab9efa9bc5: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.556:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\a66dbbe0-42f7-4af6-a30a-c9175af4bb6e: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.556:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\c323ecdb-b84d-4898-8b74-0e909df29918: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.557:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\715d88e2-6cfd-47b2-9cad-2f6f1d354057: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.557:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\fa994057-0af0-41ee-9e16-e1f937ccf392: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.557:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\545b9fda-82dd-41ce-953f-436ba9a47bf6: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.557:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\2138b42e-9a15-4898-b417-e0bf3c9d67f8: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.558:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\921c58f5-8a7e-465b-986f-82550031b1cf: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.558:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\8b6eda6d-c2e2-46d1-9345-3b8748f07385: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.558:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\b9fc524c-8875-4476-bb1f-5740886f1641: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.558:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\20c51326-6855-4638-a27c-47b94ad609f3: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.559:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\02b2d40c-cf1f-4a2a-97a5-faac5950c5c1: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.559:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\65327d5c-21df-4c70-9104-6141ea85ecdd: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.559:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\98ba6488-e641-4b9f-adf5-61fd9b3dd298: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.559:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\b32d759b-074d-43ff-935c-d2b813267ccb: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.560:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\af4519cb-d1be-447b-bcd0-a764da872067: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.560:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\946627c4-a606-4d9c-aadf-7c9223075d62: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.560:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\c0cd0e70-55fc-49e8-9460-92af3debf151: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.561:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\8c6b72cd-af82-48cf-85d2-60cd28c1da2f: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.561:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\43474a38-d2b1-41b7-9ba7-4a8e048d14ac: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.561:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\14c1eb99-5520-4f1b-8bf8-3a5c71f38998: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.561:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\198a888a-8e00-41c5-8e9a-c9697225aa5e: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.562:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\fe109a9c-a293-4f70-a2cc-993dc7a07cf5: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.562:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\dd1acf46-843c-47c9-bf46-588ff949aa0e: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.562:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\ad7df1ec-2593-47a5-a392-431478b8c2c7: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.562:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\92e4fb21-393d-4f0c-96c5-d287fb938eb1: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.563:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\90a234ea-76ae-4de2-a8f7-0908b27d93b1: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.563:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\22e87c5b-ae19-4c3b-8d4b-963c84ae0d61: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.563:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\749d1ff7-2c63-4d51-ad80-17c006f4a53a: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.563:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\e996e356-266c-4dd9-92da-c4dd0c15ec76: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.564:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\811eeeb8-73b7-4bce-871d-6ce13188376b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.564:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\af6a3600-84a9-48c7-968d-2306d91e955c: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.564:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\5ab73b4e-eafa-418b-961c-1920516e4f93: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.565:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\1cbc6868-f4c7-4f85-9725-20e8909f9b63: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.565:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\6aa6422c-466b-4893-8871-25e900526c74: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.565:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\4ca05bdb-0417-4d30-90fb-90f35c6f5085: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.565:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\bb176043-0ff4-4c9f-850e-786c76a109ce: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.566:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\8570681f-42ad-40c9-9596-30a31902c086: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.566:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\1122243c-63e6-405f-b229-bea692873c2b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.566:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\3faf9865-ff62-4de9-8e7b-9a44c5e69140: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.566:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\64608f70-7764-4454-8369-4ac8279ed002: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.567:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\1da970c6-ee28-4362-ad49-c7aaf3c5adc9: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.567:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\74d22713-27a8-4653-855d-5ec4ee7011ac: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.567:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\e8190462-9415-4d0e-8a89-d39bc690deb6: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.567:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\d86b20a7-9f64-4fec-9397-2b1c5b470b61: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.568:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\c6970a7f-5b38-465f-b9b6-a2d9e20982a6: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.568:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\656226b7-b8f5-406f-936f-49977c5c53bc: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.568:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\a4be92b7-7df9-4be4-a599-d6a8fa9ce579: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.568:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\1ac13270-e22d-456f-aaab-8c92f3f6f2ae: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.569:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\244ec4b7-7823-410d-9e92-1b9d60f3ab5d: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.569:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\991ff63a-82e3-48ee-bbc5-b135520271a3: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.569:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\9a2f5344-47a9-49d5-9572-1de5fbd9610b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.569:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\aad89a2d-e2cc-4df6-9a25-b3d6df0b2784: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.570:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\70d3692f-1a62-4061-8f56-0fb1041a009d: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.570:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\05c52192-f086-4bf5-927f-1d806d3254a2: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.570:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\c6070529-6abc-447b-8da1-4bcf309abee0: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.571:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\5ed06668-f8e9-4f57-98dd-4ec99730512b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.571:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\36dc9545-13bd-4cf8-86d1-53ae771b2e11: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.571:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\83bfcce3-d64d-4fa7-b1b5-a6b7a517a616: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.571:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\a4f89b58-9734-4d2e-a8f0-1acf285d39dd: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.572:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\1d205257-8510-497d-8903-1c62142ecfbb: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.572:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\a75c1781-abcb-4ab0-a541-5fcf119ebe18: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.572:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\80c5e6a0-5e09-4d7c-a6e3-8d6ee70b3922: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.572:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\8014f176-aec5-46f6-b8c6-a94c0afc477b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.573:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\68874826-648b-45bf-a0b3-eec9529b8878: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.573:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\1d80401d-fd51-4185-b9ca-6098af7dca91: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.573:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\eecec912-45c3-4134-ac34-f33a986b460b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.573:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\a3df06f4-9d45-422d-8d33-a498f65bd29b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.574:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\9e4d7d1a-73c8-4a2f-814f-ee298168c672: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.574:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\f8b1e7fc-79b1-4e1e-ba45-87d643bd8c5b: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+[0725/153357.574:ERROR:third_party\crashpad\crashpad\util\file\filesystem_win.cc:128] GetFileAttributes C:\Users\sucot\AppData\Local\Google\Chrome\User Data\Crashpad\attachments\ee588f7b-1a0f-4533-934a-77d71fda2506: РќРµ СѓРґР°РµС‚СЃСЏ РЅР°Р№С‚Рё СѓРєР°Р·Р°РЅРЅС‹Р№ С„Р°Р№Р». (0x2)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000003020CB8
+MediaShow2: в†’ QuickView (parent!=NULL)
+[WCP-n] WCP Plugin unload! ------------------------------------------------
+[WCP-n] WCP Plugin Loaded ===================== Thread ID = 0x904C ========
+[WCP-d] INI = "c:\Totalcmd\wcpatcher\wcpatcher.ini" 
+[WCP-n] load_from_ini: debug level = 5 [n]
+[WCP-n] TotalCmd version = 11.55.0.0
+[WCP-n] TotalCmd date = "2025-06-25"
+[WCP-E] load_image_cfg: ERROR = -41
+[WCP-E] patch_internal: ERROR = -23
+[WCP-n] WCP Plugin unload! ------------------------------------------------
+[WCP-n] WCP Plugin Loaded ===================== Thread ID = 0x8EB8 ========
+[WCP-d] INI = "c:\Totalcmd\wcpatcher\wcpatcher.ini" 
+[WCP-n] load_from_ini: debug level = 5 [n]
+[WCP-n] TotalCmd version = 11.55.0.0
+[WCP-n] TotalCmd date = "2025-06-25"
+[WCP-E] load_image_cfg: ERROR = -41
+[WCP-E] patch_internal: ERROR = -23
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\Neuropulse.mp4'
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\Neuropulse.mp4'
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=1 useDS=1
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFPlay: hr=0x00000000
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\1.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\1.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\1.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\Neuropulse.mp4' prevDS=0 useDS=0
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\1.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\1.mp4'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\2.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\3.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+MediaShow2: quickView=1 appendMode=0 playlistCount=1
+MediaShow2: showPlaylist=0 playlistCount=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFPlay: hr=0x00000000
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\4.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\5.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\6.avi'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)
+LLNW: 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4' prevDS=0 useDS=0
+LLNW: fallback MFOpen 'd:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+MFOpen: MFP hr=0x00000000 pP=1 file='d:\Arx\Software Downloads\MediaShow\MediaShow2\7.mp4'
+LLNW: MFOpen hr=0x00000000
+MFPlay: hr=0x00000000
+LLNW: MFPlay hr=0x00000000 dur=0.0 ar=0.00
+MediaShow2: ParentWin='TLister' parent=0000000000C00226
+MediaShow2: в†’ QuickView (parent!=NULL)

@@ -1,6 +1,7 @@
 # Build directories
 build/
 build_x64/
+build-x64/
 
 # Compiled binaries
 *.dll
