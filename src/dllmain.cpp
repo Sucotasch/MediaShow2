@@ -838,12 +838,13 @@ static void UpdateVolumeSlider(PluginState* state) {
 // only when IT loads a file (ListLoadW / ListLoadNextW). When playback
 // switches through the plugin's own playlist (double-click, Prev/Next, or
 // auto-advance on track end) TC never hears about it — so the title keeps the
-// startup file. Update it here by replacing only the filename inside "[...]",
-// preserving TC's format and locale.
+// startup file. Update it here by replacing the contents inside "[...]" with
+// the full path of the new file (TC itself shows the full path, not just the
+// basename — the user relies on the title for the path), preserving TC's
+// format and locale.
 static void UpdateListerTitle(PluginState* state) {
     if (!state || !state->hParentWnd || !IsWindow(state->hParentWnd)) return;
-    const TCHAR* slash = _tcsrchr(state->filePath, TEXT('\\'));
-    const TCHAR* fname = slash ? slash + 1 : state->filePath;
+    const TCHAR* fname = state->filePath;   // full path, same as TC shows
     if (!fname[0]) return;
 
     TCHAR title[512] = {0};
