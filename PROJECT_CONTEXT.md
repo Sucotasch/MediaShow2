@@ -289,6 +289,18 @@ MediaShow2/
 - **Append mode:** При F3 файлы добавляются в текущий плейлист (включая первый запуск с auto-load). Duplicate detection предотвращает повторное добавление уже воспроизведённых файлов.
 - **Auto-save/autoload:** Плейлист сохраняется в файл и восстанавливается при перезапуске.
 - **Heap corruption:** Исправлена проблема с double-free при компакции массива файлов в dir scan fallback (commit 9260488).
+- **2026-08-09 — фиксы по Audit.md/FIXES.md (внедрены, TC-тест без видимых багов):**
+  - Единый парсер строки TC `ParseTCFileName` вместо 3 копипаст-блоков (F1): корректно обрабатывает размеры в 1–3 группы цифр (файлы < 1 МБ) + пропуск несуществующих файлов (M9).
+  - `_tcsncpy` → `_tcsncpy_s(..., _TRUNCATE)` во всех 22 местах (F2).
+  - Безопасный realloc двух массивов (files+dates) — последовательный realloc без висячих указателей (F3).
+  - `playlistIndex` синхронизируется в `ListLoadNextW` (F4); `m4a` добавлен в `IsAudioOnly` (F5); даты — `ftLastWriteTime` единообразно (F10).
+  - Рефкаунт + флаг `destroying` у MFPlayer — устранён use-after-free в колбэке MF (F6, все операции Interlocked).
+  - `RecreateVideoWindow` в PlayIndex fallback и QuickView-ветке ListLoadW (F7 фаза 1, с синком `DSPlayer_SetVideoWnd`). Фаза 2 (ListLoadNextW, отложенный IDT_RECREATE) — намеренно отложена до TC-теста сценария 6.avi→7.mp4→5.mp4.
+  - `hLastPluginWnd` в файловой области + закрытие старой вкладки только из той же директории (`SameDirectory`) + очистка в `ListCloseWindow` (F8).
+  - Удалена мёртвая ветка `MFPlayer_HasVideo` (F9); `CoInitializeEx` в `DSPlayer_Open` без `CoUninitialize` (F11).
+  - Удалён мёртвый код: `BuildPlaylistFromSelection`, `WM_DEFERRED_GETFILES`, параметр `useDS`, неиспользуемые константы IDM (F12); мелкие фиксы M2/M4/M5/M6/M10 (F13); M8-комментарий про E-AC-3.
+  - `SavePlaylist` только при реальном изменении — флаг `playlistDirty` (F14), сброс после записи.
+  - Починены тесты: `test_bug.py` (IndexError), `test_parse.py` (2/8 FAIL → ALL PASSED), `test_verify.py` (хардкод пути → `build-x64` относительно скрипта) (F15).
 
 ### Плейлист из выделенных файлов
 
@@ -484,8 +496,8 @@ OGG, FLAC, MKV/WebM, DAT, VOB, MIDI, MPEG-1
 cmake -B build -G "Visual Studio 17 2022" -A Win32
 cmake --build build --config Release
 
-cmake -B build_x64 -G "Visual Studio 17 2022" -A x64
-cmake --build build_x64 --config Release
+cmake -B build-x64 -G "Visual Studio 17 2022" -A x64
+cmake --build build-x64 --config Release
 
 python package.py
 ```

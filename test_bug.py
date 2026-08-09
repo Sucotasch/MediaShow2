@@ -14,7 +14,8 @@ def parse_c_algorithm_buggy(buf):
         return buf[:]
 
     before_len = date_pos
-    fn = list(buf[:before_len])
+    # C code uses a buffer of size before_len+1; Python list must match
+    fn = list(buf[:before_len]) + ['\0']
     fn[before_len] = '\0'
 
     # Trim
@@ -65,7 +66,8 @@ def parse_c_algorithm_fixed(buf):
         return buf[:]
 
     before_len = date_pos
-    fn = list(buf[:before_len])
+    # C code uses a buffer of size before_len+1; Python list must match
+    fn = list(buf[:before_len]) + ['\0']
     fn[before_len] = '\0'
 
     while before_len > 0 and fn[before_len-1] == ' ':
@@ -99,15 +101,25 @@ def parse_c_algorithm_fixed(buf):
 
 
 tests = [
-    "02 - Stone Wrote in Stone.mp3 10 198 564 24.12.2023 21:59 -a--",
-    "03 - Dusk Century.mp3 8 404 459 24.12.2023 21:59 -a--",
-    "04 - This Hate in Me Will Pass.mp3 8 873 644 24.12.2023 21:59 -a--",
+    ("02 - Stone Wrote in Stone.mp3 10 198 564 24.12.2023 21:59 -a--",
+     "02 - Stone Wrote in Stone.mp3"),
+    ("03 - Dusk Century.mp3 8 404 459 24.12.2023 21:59 -a--",
+     "03 - Dusk Century.mp3"),
+    ("04 - This Hate in Me Will Pass.mp3 8 873 644 24.12.2023 21:59 -a--",
+     "04 - This Hate in Me Will Pass.mp3"),
 ]
 
-for buf in tests:
+all_passed = True
+for buf, expected in tests:
     print(f"Input: '{buf}'")
     buggy = parse_c_algorithm_buggy(buf)
     fixed = parse_c_algorithm_fixed(buf)
+    ok = (buggy == expected and fixed == expected)
     print(f"  Buggy: '{buggy}'")
     print(f"  Fixed: '{fixed}'")
+    print(f"  Expected: '{expected}' -> {'OK' if ok else 'FAIL'}")
     print()
+    if not ok:
+        all_passed = False
+
+print("ALL TESTS PASSED" if all_passed else "SOME TESTS FAILED")

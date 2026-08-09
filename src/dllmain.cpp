@@ -39,12 +39,23 @@ static const PROPERTYKEY kPKEY_Media_Duration =
 #define max(a,b) ((a)>(b)?(a):(b))
 #endif
 
-#define WM_DEFERRED_GETFILES (WM_APP + 100)
-
 static TCHAR iniPath[MAX_PATH] = {0};
 static ATOM  mainWndClass      = 0;
 static ATOM  fullscreenWndClass = 0;
 static HWND  s_fixMaximizeWnd  = NULL;
+static HWND  hLastPluginWnd    = NULL;  // last plugin window (for append mode)
+
+/* -----------------------------------------------------------------------
+   Compare the directory parts of two full paths (case-insensitive).
+   ----------------------------------------------------------------------- */
+static BOOL SameDirectory(const TCHAR* a, const TCHAR* b) {
+    TCHAR da[MAX_PATH] = {0}, db[MAX_PATH] = {0};
+    _tcsncpy_s(da, MAX_PATH, a, _TRUNCATE);
+    _tcsncpy_s(db, MAX_PATH, b, _TRUNCATE);
+    TCHAR* sa = _tcsrchr(da, TEXT('\\')); if (sa) *sa = 0;
+    TCHAR* sb = _tcsrchr(db, TEXT('\\')); if (sb) *sb = 0;
+    return _tcsicmp(da, db) == 0;
+}
 
 /* -----------------------------------------------------------------------
    Plugin State
@@ -81,6 +92,7 @@ struct PluginState {
     FILETIME* fileDates;
     int   playlistCount;
     int   playlistIndex;
+    BOOL  playlistDirty;   // set when composition or index changed → persist
     int   sortColumn;
     BOOL  sortAscending;
     HFONT hFont;
@@ -179,7 +191,7 @@ static TCHAR* GetPlaylistPath(void) {
     static TCHAR path[MAX_PATH] = {0};
     if (path[0] != 0) return path;
     if (iniPath[0] == 0) return NULL;
-    _tcsncpy(path, iniPath, MAX_PATH - 1);
+    _tcsncpy_s(path, MAX_PATH, iniPath, _TRUNCATE);
     TCHAR* slash = _tcsrchr(path, TEXT('\\'));
     if (slash) {
         _tcscpy(slash + 1, TEXT("MediaShow2_playlist.txt"));
@@ -191,6 +203,7 @@ static TCHAR* GetPlaylistPath(void) {
 
 static void SavePlaylist(PluginState* state) {
     if (!state || !state->playlist || state->playlistCount == 0) return;
+    if (!state->playlistDirty) return;   // nothing changed since last save
     TCHAR* path = GetPlaylistPath();
     if (!path) return;
     FILE* f = _tfopen(path, TEXT("w"));
@@ -200,6 +213,7 @@ static void SavePlaylist(PluginState* state) {
         _ftprintf(f, TEXT("%s\n"), state->playlist[i]);
     }
     fclose(f);
+    state->playlistDirty = FALSE;
 }
 
 static void LoadPlaylist(PluginState* state) {
@@ -211,6 +225,7 @@ static void LoadPlaylist(PluginState* state) {
     TCHAR line[MAX_PATH];
     if (!fgetws(line, MAX_PATH, f)) { fclose(f); return; }
     int savedIndex = _ttoi(line);
+    BOOL pruned = FALSE;   // a saved entry no longer exists on disk
     TCHAR** files = NULL;
     FILETIME* dates = NULL;
     int count = 0;
@@ -226,9 +241,11 @@ static void LoadPlaylist(PluginState* state) {
         if (count >= allocSize) {
             allocSize *= 2;
             TCHAR** tmp = (TCHAR**)realloc(files, allocSize * sizeof(TCHAR*));
+            if (!tmp) break;
+            files = tmp;
             FILETIME* tmpD = (FILETIME*)realloc(dates, allocSize * sizeof(FILETIME));
-            if (!tmp || !tmpD) break;
-            files = tmp; dates = tmpD;
+            if (!tmpD) break;
+            dates = tmpD;
         }
         // Check file exists
         WIN32_FILE_ATTRIBUTE_DATA fad;
@@ -236,6 +253,8 @@ static void LoadPlaylist(PluginState* state) {
             files[count] = _tcsdup(line);
             dates[count] = fad.ftLastWriteTime;
             count++;
+        } else {
+            pruned = TRUE;   // entry missing — real content change vs saved file
         }
     }
     fclose(f);
@@ -245,6 +264,9 @@ static void LoadPlaylist(PluginState* state) {
     state->fileDates     = dates;
     state->playlistCount = count;
     state->playlistIndex = (savedIndex >= 0 && savedIndex < count) ? savedIndex : 0;
+    // Persist only if the restored list differs from the file: entries were
+    // pruned or the saved index was out of range. Otherwise nothing changed.
+    state->playlistDirty = pruned || (state->playlistIndex != savedIndex);
 }
 
 static void ClearPlaylist(PluginState* state) {
@@ -288,7 +310,7 @@ static BOOL IsAudioOnly(const TCHAR* filePath) {
     static const TCHAR* audioExts[] = {
         TEXT("mp3"), TEXT("wav"), TEXT("ogg"), TEXT("wma"), TEXT("flac"),
         TEXT("aac"), TEXT("opus"), TEXT("mid"), TEXT("midi"), TEXT("kar"),
-        TEXT("mp1"), TEXT("mp2"), NULL
+        TEXT("mp1"), TEXT("mp2"), TEXT("m4a"), NULL
     };
     for (int i = 0; audioExts[i]; i++)
         if (_tcsicmp(dot, audioExts[i]) == 0) return TRUE;
@@ -324,15 +346,17 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outD
         if (count >= allocSize) {
             allocSize *= 2;
             TCHAR** tmp = (TCHAR**)realloc(files, allocSize * sizeof(TCHAR*));
+            if (!tmp) break;
+            files = tmp;
             FILETIME* tmpD = (FILETIME*)realloc(dates, allocSize * sizeof(FILETIME));
-            if (!tmp || !tmpD) break;
-            files = tmp; dates = tmpD;
+            if (!tmpD) break;
+            dates = tmpD;
         }
 
         TCHAR fullPath[MAX_PATH];
         _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fd.cFileName);
         files[count] = _tcsdup(fullPath);
-        dates[count] = fd.ftCreationTime;
+        dates[count] = fd.ftLastWriteTime;
         count++;
 
     } while (FindNextFile(hFind, &fd));
@@ -348,25 +372,11 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outD
     *outCount = count;
 }
 
-static void BuildPlaylistFromSelection(PluginState* state, TCHAR** selFiles, int selCount, TCHAR* currentFile) {
-    FreePlaylist(state);
-    state->playlist      = selFiles;
-    state->playlistCount = selCount;
-    state->playlistIndex = 0;
-    state->fileDates     = (FILETIME*)calloc(selCount, sizeof(FILETIME));
-    for (int i = 0; i < selCount; i++) {
-        if (_tcsicmp(selFiles[i], currentFile) == 0) {
-            state->playlistIndex = i;
-            break;
-        }
-    }
-}
-
 static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* currentFile) {
     FreePlaylist(state);
 
     TCHAR dir[MAX_PATH];
-    _tcsncpy(dir, currentFile, MAX_PATH - 1);
+    _tcsncpy_s(dir, MAX_PATH, currentFile, _TRUNCATE);
     TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
     if (lastSlash) *lastSlash = 0;
 
@@ -381,6 +391,7 @@ static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* curren
         state->playlist[0]   = _tcsdup(currentFile);
         state->playlistCount = 1;
         state->playlistIndex = 0;
+        state->playlistDirty = TRUE;
         return;
     }
 
@@ -388,6 +399,7 @@ static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* curren
     state->fileDates     = dates;
     state->playlistCount = count;
     state->playlistIndex = 0;
+    state->playlistDirty = TRUE;
 
     for (int i = 0; i < count; i++) {
         if (_tcsicmp(state->playlist[i], currentFile) == 0) {
@@ -542,6 +554,54 @@ static BOOL CALLBACK EnumFindLCLListBox(HWND hWnd, LPARAM lParam) {
     return TRUE;
 }
 
+/* -----------------------------------------------------------------------
+   TC line parsing: "name.ext NNN NBSP NNN NBSP NNN TAB DD.MM.YYYY HH:MM -a--"
+   Single implementation used by RequestSelectedFiles and ListLoadW append paths.
+   Supports 1..3 size groups (files < 1 KB, < 1 MB, >= 1 MB).
+   ----------------------------------------------------------------------- */
+static BOOL IsTCSeparator(TCHAR c) {
+    return c == TEXT(' ') || c == 0x00A0 || c == 0x0009;
+}
+
+static BOOL ParseTCFileName(const TCHAR* buf, TCHAR* out, int outMax) {
+    if (!buf || !out || outMax <= 0) return FALSE;
+    out[0] = TEXT('\0');
+
+    const TCHAR* datePos = NULL;
+    for (const TCHAR* p = buf; p[9]; p++) {
+        if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
+            p[0] >= '0' && p[0] <= '9' && p[1] >= '0' && p[1] <= '9' &&
+            p[3] >= '0' && p[3] <= '9' && p[4] >= '0' && p[4] <= '9' &&
+            p[6] >= '0' && p[6] <= '9' && p[7] >= '0' && p[7] <= '9' &&
+            p[8] >= '0' && p[8] <= '9' && p[9] >= '0' && p[9] <= '9') {
+            datePos = p;
+            break;
+        }
+    }
+    if (!datePos) { _tcsncpy_s(out, outMax, buf, _TRUNCATE); return out[0] != 0; }
+
+    int len = (int)(datePos - buf);
+    if (len <= 0) return FALSE;               // date at line start — nothing before it
+    if (len >= outMax) len = outMax - 1;
+    memcpy(out, buf, (size_t)len * sizeof(TCHAR));
+    out[len] = TEXT('\0');
+
+    // Trim trailing separators (space / NBSP / TAB)
+    while (len > 0 && IsTCSeparator(out[len - 1])) out[--len] = TEXT('\0');
+
+    // Strip 1..3 "digits + separator" groups from the right (file size)
+    TCHAR* p = out + len - 1;
+    for (int g = 0; g < 3; g++) {
+        TCHAR* digitStart = p;
+        while (p > out && *p >= '0' && *p <= '9') p--;
+        if (p == digitStart) break;                 // no digits — not a size group
+        if (p > out && IsTCSeparator(*p)) p--;      // consumed the separator
+        else if (p > out) { p = digitStart; break; } // group glued to name — keep
+    }
+    *(p + 1) = TEXT('\0');
+    return out[0] != 0;
+}
+
 static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
     if (!hTC) {
@@ -570,7 +630,7 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     SendMessage(hListBox, LB_GETSELITEMS, selCount, (LPARAM)selItems);
 
     TCHAR dir[MAX_PATH];
-    _tcsncpy(dir, state->filePath, MAX_PATH - 1);
+    _tcsncpy_s(dir, MAX_PATH, state->filePath, _TRUNCATE);
     TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
     if (lastSlash) *lastSlash = 0;
 
@@ -589,48 +649,8 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
         _sntprintf(dbg, 512, TEXT("MediaShow2: LB_GETTEXT[%d]='%s'\n"), i, buf);
         OutputDebugString(dbg);
 
-        // TC format: "filename.ext NNN NNN NNN DD.MM.YYYY HH:MM -a--"
-        // Right-to-left: find date, strip date+time+attrs, then strip size (3 digit groups)
-        TCHAR* datePos = NULL;
-        for (TCHAR* p = buf; p[9]; p++) {
-            if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
-                p[0] >= '0' && p[0] <= '9' && p[1] >= '0' && p[1] <= '9' &&
-                p[3] >= '0' && p[3] <= '9' && p[4] >= '0' && p[4] <= '9' &&
-                p[6] >= '0' && p[6] <= '9' && p[7] >= '0' && p[7] <= '9' &&
-                p[8] >= '0' && p[8] <= '9' && p[9] >= '0' && p[9] <= '9') {
-                datePos = p;
-                break;
-            }
-        }
-
         TCHAR fileName[MAX_PATH] = {0};
-        if (datePos) {
-            int beforeLen = (int)(datePos - buf);
-            _tcsncpy(fileName, buf, beforeLen);
-            fileName[beforeLen] = TEXT('\0');
-            // TC uses NBSP (0x00A0) and TAB (0x0009) as separators, not just spaces
-            while (beforeLen > 0 && (fileName[beforeLen-1] == TEXT(' ') || fileName[beforeLen-1] == 0x00A0 || fileName[beforeLen-1] == 0x0009))
-                fileName[--beforeLen] = TEXT('\0');
-            // Strip 3 size groups from right: "NNN NBSP NNN NBSP NNN"
-            TCHAR* p = fileName + beforeLen - 1;
-            // Group 3 (rightmost)
-            while (p > fileName && *p >= '0' && *p <= '9') p--;
-            if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
-            else { p = fileName + beforeLen - 1; }
-            // Group 2
-            while (p > fileName && *p >= '0' && *p <= '9') p--;
-            if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
-            else { p = fileName + beforeLen - 1; }
-            // Group 1 (leftmost)
-            while (p > fileName && *p >= '0' && *p <= '9') p--;
-            if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
-            else { p = fileName + beforeLen - 1; }
-            *(p + 1) = TEXT('\0');
-            while (beforeLen > 0 && (fileName[beforeLen-1] == TEXT(' ') || fileName[beforeLen-1] == 0x00A0 || fileName[beforeLen-1] == 0x0009))
-                fileName[--beforeLen] = TEXT('\0');
-        } else {
-            _tcsncpy(fileName, buf, MAX_PATH - 1);
-        }
+        ParseTCFileName(buf, fileName, MAX_PATH);
 
         TCHAR fullPath[MAX_PATH];
         _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fileName);
@@ -642,14 +662,15 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
             continue;
         }
 
-        files[validCount] = _tcsdup(fullPath);
-
-        // Get file date from filesystem
+        // Skip if parsed file does not exist (parser edge cases → dead entries)
         WIN32_FILE_ATTRIBUTE_DATA fad;
-        if (GetFileAttributesEx(fullPath, GetFileExInfoStandard, &fad)) {
-            state->fileDates[validCount] = fad.ftLastWriteTime;
+        if (!GetFileAttributesEx(fullPath, GetFileExInfoStandard, &fad)) {
+            free(buf);
+            continue;
         }
 
+        files[validCount] = _tcsdup(fullPath);
+        state->fileDates[validCount] = fad.ftLastWriteTime;
         validCount++;
         free(buf);
     }
@@ -678,6 +699,7 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     }
     // Update showPlaylist based on current file type
     state->showPlaylist = IsAudioOnly(state->filePath);
+    state->playlistDirty = TRUE;
     UpdatePlaylist(state);
     SavePlaylist(state);
 }
@@ -972,8 +994,12 @@ static LRESULT CALLBACK FullscreenWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
         return 1;
     }
     case WM_KEYDOWN:
-        if ((wParam == VK_ESCAPE || wParam == VK_F11) && state)
-            SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+        if (state) {
+            if (wParam == VK_ESCAPE || wParam == VK_F11)
+                SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+            else
+                SendMessage(state->hMainWnd, WM_KEYDOWN, wParam, lParam);
+        }
         return 0;
     case WM_LBUTTONDBLCLK:
         if (state)
@@ -1084,6 +1110,7 @@ static void PlayIndex(PluginState* state, int idx) {
     if (state->switchInProgress) return;
     state->switchInProgress = TRUE;
 
+    BOOL playedOK = FALSE;
     // Skip unplayable files (up to playlistCount attempts to avoid infinite loop)
     for (int attempt = 0; attempt < state->playlistCount; attempt++) {
         state->playlistIndex = idx;
@@ -1108,31 +1135,26 @@ static void PlayIndex(PluginState* state, int idx) {
                 state->useDirectShow = TRUE;
                 DSPlayer_Play(state->pDSPlayer);
             }
-        } else if (MFPlayer_HasVideo(state->pMFPlayer)) {
-            // Switching from DS to MF — stop DS, recreate window for MF
-            if (state->useDirectShow) {
-                DSPlayer_Stop(state->pDSPlayer);
-                RecreateVideoWindow(state);
-            }
-            state->useDirectShow = FALSE;
-            MFPlayer_Destroy(state->pMFPlayer);
-            state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
-            hr = MFPlayer_Open(state->pMFPlayer, f);
-            if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         } else {
-            // Fallback — always recreate MFPlayer to avoid stale renderer
-            if (state->useDirectShow) {
-                DSPlayer_Stop(state->pDSPlayer);
-                RecreateVideoWindow(state);
-            }
+            // Fallback — always recreate MFPlayer AND the video window so the
+            // new player gets a fresh HWND (no stale MFP/D3D state from the
+            // previous file). Note: pVideoCtrl is NULL until Open succeeds, so
+            // the old 3-way split (needsDS / HasVideo / fallback) collapsed
+            // into this single MF path.
+            if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
             state->useDirectShow = FALSE;
             MFPlayer_Destroy(state->pMFPlayer);
+            RecreateVideoWindow(state);
+            // Keep DSPlayer's window handle in sync — RecreateVideoWindow destroyed
+            // the old HWND, and a later DS-fallback open would otherwise attach
+            // VMR-9 to a dead window.
+            DSPlayer_SetVideoWnd(state->pDSPlayer, state->hVideoWnd);
             state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
             hr = MFPlayer_Open(state->pMFPlayer, f);
             if (SUCCEEDED(hr)) MFPlayer_Play(state->pMFPlayer);
         }
 
-        if (SUCCEEDED(hr)) break;
+        if (SUCCEEDED(hr)) { playedOK = TRUE; break; }
 
         // Failed — try next track
         idx = (idx + 1) % state->playlistCount;
@@ -1142,17 +1164,18 @@ static void PlayIndex(PluginState* state, int idx) {
     ApplyVolume(state);
 
     TCHAR* f = state->playlist[state->playlistIndex];
-    _tcsncpy(state->filePath, f, MAX_PATH - 1);
+    _tcsncpy_s(state->filePath, MAX_PATH, f, _TRUNCATE);
     state->duration  = state->useDirectShow ?
         DSPlayer_GetDuration(state->pDSPlayer) :
         MFPlayer_GetDuration(state->pMFPlayer);
     state->videoAr   = state->useDirectShow ?
         DSPlayer_GetAspectRatio(state->pDSPlayer) :
         MFPlayer_GetAspectRatio(state->pMFPlayer);
-    state->isPlaying = TRUE;
+    state->isPlaying = playedOK;
     state->isPaused  = FALSE;
 
     state->showPlaylist = IsAudioOnly(f);
+    state->playlistDirty = TRUE;   // current track moved → persist index
     UpdatePlaylist(state);
     UpdateLayout(state);
     UpdateStatus(state);
@@ -1364,10 +1387,10 @@ static HBITMAP LoadAlbumArtFromBytes(BYTE* data, DWORD size) {
     return NULL;
 }
 
-static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, MediaInfo* info) {
+static void GetMediaInfo(const TCHAR* filePath, double duration, MediaInfo* info) {
     memset(info, 0, sizeof(MediaInfo));
 
-    _tcsncpy(info->fileName, filePath, MAX_PATH - 1);
+    _tcsncpy_s(info->fileName, MAX_PATH, filePath, _TRUNCATE);
     TCHAR* fname = _tcsrchr(info->fileName, TEXT('\\'));
     if (fname) memmove(info->fileName, fname + 1, (_tcslen(fname + 1) + 1) * sizeof(TCHAR));
 
@@ -1506,9 +1529,9 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
                 HRESULT hr = props->GetValue(pk, &v);
                 if (SUCCEEDED(hr)) {
                     if (v.vt == VT_LPWSTR && v.pwszVal)
-                        _tcsncpy(dst, v.pwszVal, dstMax - 1);
+                        _tcsncpy_s(dst, dstMax, v.pwszVal, _TRUNCATE);
                     else if (v.vt == (VT_VECTOR | VT_LPWSTR) && v.calpwstr.cElems > 0 && v.calpwstr.pElems[0])
-                        _tcsncpy(dst, v.calpwstr.pElems[0], dstMax - 1);
+                        _tcsncpy_s(dst, dstMax, v.calpwstr.pElems[0], _TRUNCATE);
                 }
                 PropVariantClear(&v);
             };
@@ -1536,7 +1559,7 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
                 else if (val.vt == VT_I4)
                     _sntprintf(info->track, 16, TEXT("%d"), val.lVal);
                 else if (val.vt == VT_LPWSTR && val.pwszVal)
-                    _tcsncpy(info->track, val.pwszVal, 15);
+                    _tcsncpy_s(info->track, 16, val.pwszVal, _TRUNCATE);
             }
             PropVariantClear(&val);
 
@@ -1563,7 +1586,7 @@ static void GetMediaInfo(const TCHAR* filePath, double duration, BOOL useDS, Med
                 if (val.vt == VT_UI4)
                     _sntprintf(info->year, 16, TEXT("%u"), val.ulVal);
                 else if (val.vt == VT_LPWSTR && val.pwszVal && _tcslen(val.pwszVal) >= 4)
-                    _tcsncpy(info->year, val.pwszVal, 4);
+                    _tcsncpy_s(info->year, 16, val.pwszVal, _TRUNCATE);
             }
             PropVariantClear(&val);
             // Fallback year key
@@ -1648,16 +1671,13 @@ static LRESULT CALLBACK FileInfoWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
     case WM_CLOSE:
         DestroyWindow(hWnd);
         return 0;
-    case WM_DESTROY:
-        PostMessage(hWnd, WM_USER, 0, 0);
-        return 0;
     }
     return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double duration, BOOL useDS) {
+static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double duration) {
     FileInfoData* fd = (FileInfoData*)calloc(1, sizeof(FileInfoData));
-    GetMediaInfo(filePath, duration, useDS, &fd->info);
+    GetMediaInfo(filePath, duration, &fd->info);
 
     static BOOL registered = FALSE;
     if (!registered) {
@@ -1746,7 +1766,7 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
     SetWindowPos(hWnd, HWND_TOP, pr.left + (pr.right - pr.left - dlgW) / 2,
         pr.top + (pr.bottom - pr.top - dlgH) / 2, 0, 0, SWP_NOSIZE);
 
-    EnableWindow(hParent, FALSE);
+    if (IsWindow(hParent)) EnableWindow(hParent, FALSE);
     MSG msg;
     while (IsWindow(hWnd)) {
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -1758,8 +1778,7 @@ static void ShowFileInfoDialog(HWND hParent, const TCHAR* filePath, double durat
             WaitMessage();
         }
     }
-    EnableWindow(hParent, TRUE);
-    SetFocus(hParent);
+    if (IsWindow(hParent)) { EnableWindow(hParent, TRUE); SetFocus(hParent); }
 
     if (fd->info.hAlbumArt) DeleteObject(fd->info.hAlbumArt);
     free(fd);
@@ -1942,6 +1961,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 state->sortAscending = TRUE;
             }
             SortPlaylist(state);
+            state->playlistDirty = TRUE;
             UpdatePlaylist(state);
             return 0;
         }
@@ -1980,6 +2000,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                         else if (idx < state->playlistIndex)
                             state->playlistIndex--;
                     }
+                    state->playlistDirty = TRUE;
                     UpdatePlaylist(state);
                 }
             } else if (kd->wVKey == VK_RETURN) {
@@ -1997,6 +2018,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                     state->playlist[idx - 1] = tmp;
                     if (state->playlistIndex == idx) state->playlistIndex--;
                     else if (state->playlistIndex == idx - 1) state->playlistIndex++;
+                    state->playlistDirty = TRUE;
                     UpdatePlaylist(state);
                     ListView_SetItemState(state->hPlaylist, idx - 1,
                         LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
@@ -2009,6 +2031,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                     state->playlist[idx + 1] = tmp;
                     if (state->playlistIndex == idx) state->playlistIndex++;
                     else if (state->playlistIndex == idx + 1) state->playlistIndex--;
+                    state->playlistDirty = TRUE;
                     UpdatePlaylist(state);
                     ListView_SetItemState(state->hPlaylist, idx + 1,
                         LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
@@ -2188,16 +2211,14 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         case IDM_FILEINFO: {
             TCHAR* filePath = state->filePath;
             double dur = state->duration;
-            BOOL useDS = state->useDirectShow;
             if (state->showPlaylist && state->playlist && state->playlistCount > 0) {
                 int selIdx = ListView_GetNextItem(state->hPlaylist, -1, LVNI_SELECTED);
                 if (selIdx >= 0 && selIdx < state->playlistCount) {
                     filePath = state->playlist[selIdx];
                     dur = 0; // will be read from file
-                    useDS = FALSE;
                 }
             }
-            ShowFileInfoDialog(hWnd, filePath, dur, useDS);
+            ShowFileInfoDialog(hWnd, filePath, dur);
             break;
         }
 
@@ -2212,8 +2233,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 TEXT("  \u2191\u2193    Volume \u00B15%\n")
                 TEXT("  M      Mute\n")
                 TEXT("  L      Toggle Playlist\n")
-                TEXT("  F11    Fullscreen\n")
-                TEXT("  Ctrl+T Always on Top"),
+                TEXT("  F11    Fullscreen"),
                 APP_NAME, MB_OK | MB_ICONINFORMATION);
             break;
         }
@@ -2253,7 +2273,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             KillTimer(hWnd, IDT_RECREATE);
             if (state->isPlaying && !state->useDirectShow && state->pMFPlayer) {
                 TCHAR filePath[MAX_PATH];
-                _tcsncpy(filePath, state->filePath, MAX_PATH);
+                _tcsncpy_s(filePath, MAX_PATH, state->filePath, _TRUNCATE);
                 MFPlayer_Destroy(state->pMFPlayer);
                 RecreateVideoWindow(state);
                 state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
@@ -2326,27 +2346,12 @@ HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
 }
 
 // Detect QuickView mode: F3 creates standalone TLister (parent=NULL), QuickView is child of TC
-#pragma optimize("", off)
 static BOOL IsQuickView(HWND ParentWin) {
     if (!ParentWin) return FALSE;
-
-    HWND hParent = GetParent(ParentWin);
-    TCHAR pcClass[128] = {0};
-    GetClassName(ParentWin, pcClass, 128);
-    TCHAR dbg[256];
-    _sntprintf(dbg, 256, TEXT("MediaShow2: ParentWin='%s' parent=%p\n"), pcClass, hParent);
-    OutputDebugString(dbg);
-
     // F3 lister: ParentWin is TLister with parent=NULL (standalone window)
     // QuickView: ParentWin is child of TC main window (parent != NULL)
-    if (hParent == NULL) {
-        OutputDebugString(TEXT("MediaShow2: → F3 Lister (parent=NULL)\n"));
-        return FALSE;
-    }
-    OutputDebugString(TEXT("MediaShow2: → QuickView (parent!=NULL)\n"));
-    return TRUE;
+    return GetParent(ParentWin) != NULL;
 }
-#pragma optimize("", on)
 
 HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     RegisterMainWndClass();
@@ -2354,15 +2359,15 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     BOOL quickView = IsQuickView(ParentWin);
 
     // Append mode: check if existing plugin window is still alive
-    static HWND hLastPluginWnd = NULL;
     if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
         PluginState* existState = GetState(hLastPluginWnd);
         // QuickView: TC reuses ParentWin without calling ListCloseWindow.
-        // Destroy MF in previous window to release IMFVideoDisplayControl
-        // so the new window's DSPlayer can use the file/window.
+        // Destroy MF in previous window and recreate the video HWND so the
+        // new player gets a fresh window (no stale MFP/D3D render state).
         if (IsQuickView(ParentWin) && existState) {
             MFPlayer_Destroy(existState->pMFPlayer);
-            DestroyChildVideoWindows(existState->hVideoWnd);
+            RecreateVideoWindow(existState);
+            DSPlayer_SetVideoWnd(existState->pDSPlayer, existState->hVideoWnd);
             existState->pMFPlayer = MFPlayer_Create(existState->hVideoWnd, OnMFEnd, existState);
         }
         if (existState && existState->appendMode && !IsQuickView(ParentWin)) {
@@ -2380,7 +2385,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                         SendMessage(hListBox, LB_GETSELITEMS, selCount, (LPARAM)selItems);
 
                         TCHAR dir[MAX_PATH];
-                        _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
+                        _tcsncpy_s(dir, MAX_PATH, FileToLoad, _TRUNCATE);
                         TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
                         if (lastSlash) *lastSlash = 0;
 
@@ -2395,41 +2400,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                             TCHAR* buf = (TCHAR*)calloc(len + 1, sizeof(TCHAR));
                             SendMessage(hListBox, LB_GETTEXT, selItems[i], (LPARAM)buf);
 
-                            TCHAR* datePos = NULL;
-                            for (TCHAR* p = buf; p[9]; p++) {
-                                if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
-                                    p[0] >= '0' && p[0] <= '9' && p[1] >= '0' && p[1] <= '9' &&
-                                    p[3] >= '0' && p[3] <= '9' && p[4] >= '0' && p[4] <= '9' &&
-                                    p[6] >= '0' && p[6] <= '9' && p[7] >= '0' && p[7] <= '9' &&
-                                    p[8] >= '0' && p[8] <= '9' && p[9] >= '0' && p[9] <= '9') {
-                                    datePos = p;
-                                    break;
-                                }
-                            }
-
                             TCHAR fileName[MAX_PATH] = {0};
-                            if (datePos) {
-                                int beforeLen = (int)(datePos - buf);
-                                _tcsncpy(fileName, buf, beforeLen);
-                                fileName[beforeLen] = TEXT('\0');
-                                while (beforeLen > 0 && (fileName[beforeLen-1] == TEXT(' ') || fileName[beforeLen-1] == 0x00A0 || fileName[beforeLen-1] == 0x0009))
-                                    fileName[--beforeLen] = TEXT('\0');
-                                TCHAR* p = fileName + beforeLen - 1;
-                                while (p > fileName && *p >= '0' && *p <= '9') p--;
-                                if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
-                                else { p = fileName + beforeLen - 1; }
-                                while (p > fileName && *p >= '0' && *p <= '9') p--;
-                                if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
-                                else { p = fileName + beforeLen - 1; }
-                                while (p > fileName && *p >= '0' && *p <= '9') p--;
-                                if (p > fileName && (*p == TEXT(' ') || *p == 0x00A0 || *p == 0x0009)) p--;
-                                else { p = fileName + beforeLen - 1; }
-                                *(p + 1) = TEXT('\0');
-                                while (beforeLen > 0 && (fileName[beforeLen-1] == TEXT(' ') || fileName[beforeLen-1] == 0x00A0 || fileName[beforeLen-1] == 0x0009))
-                                    fileName[--beforeLen] = TEXT('\0');
-                            } else {
-                                _tcsncpy(fileName, buf, MAX_PATH - 1);
-                            }
+                            ParseTCFileName(buf, fileName, MAX_PATH);
 
                             TCHAR fullPath[MAX_PATH];
                             _sntprintf(fullPath, MAX_PATH, TEXT("%s\\%s"), dir, fileName);
@@ -2438,10 +2410,10 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                             if (!dot || !IsMediaFile(dot + 1)) { free(buf); continue; }
                             if (IsDuplicate(existState, fullPath)) { free(buf); continue; }
 
-                            files[validCount] = _tcsdup(fullPath);
                             WIN32_FILE_ATTRIBUTE_DATA fad;
-                            if (GetFileAttributesEx(fullPath, GetFileExInfoStandard, &fad))
-                                dates[validCount] = fad.ftLastWriteTime;
+                            if (!GetFileAttributesEx(fullPath, GetFileExInfoStandard, &fad)) { free(buf); continue; }
+                            files[validCount] = _tcsdup(fullPath);
+                            dates[validCount] = fad.ftLastWriteTime;
                             validCount++;
                             free(buf);
                         }
@@ -2450,16 +2422,19 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                         if (validCount > 0) {
                             int oldCount = existState->playlistCount;
                             int newTotal = oldCount + validCount;
-                            TCHAR** newPl = (TCHAR**)realloc(existState->playlist, newTotal * sizeof(TCHAR*));
-                            FILETIME* newDt = (FILETIME*)realloc(existState->fileDates, newTotal * sizeof(FILETIME));
-                            if (newPl && newDt) {
+                            // Sequential realloc: on partial failure each pointer stays valid
+                            // (realloc leaves the original block untouched on failure).
+                            TCHAR** tmpPl = (TCHAR**)realloc(existState->playlist, newTotal * sizeof(TCHAR*));
+                            FILETIME* tmpDt = (FILETIME*)realloc(existState->fileDates, newTotal * sizeof(FILETIME));
+                            if (tmpPl) existState->playlist = tmpPl;
+                            if (tmpDt) existState->fileDates = tmpDt;
+                            if (tmpPl && tmpDt) {
                                 for (int i = 0; i < validCount; i++) {
-                                    newPl[oldCount + i] = files[i];
-                                    newDt[oldCount + i] = dates[i];
+                                    existState->playlist[oldCount + i] = files[i];
+                                    existState->fileDates[oldCount + i] = dates[i];
                                 }
-                                existState->playlist = newPl;
-                                existState->fileDates = newDt;
                                 existState->playlistCount = newTotal;
+                                existState->playlistDirty = TRUE;
                                 UpdatePlaylist(existState);
                                 SavePlaylist(existState);
                             } else {
@@ -2473,7 +2448,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                 } else {
                     // No selection: scan directory and add all media files
                     TCHAR dir[MAX_PATH];
-                    _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
+                    _tcsncpy_s(dir, MAX_PATH, FileToLoad, _TRUNCATE);
                     TCHAR* lastSlash = _tcsrchr(dir, TEXT('\\'));
                     if (lastSlash) *lastSlash = 0;
 
@@ -2490,14 +2465,15 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                                 continue;
                             }
                             int newTotal = existState->playlistCount + 1;
-                            TCHAR** newPl = (TCHAR**)realloc(existState->playlist, newTotal * sizeof(TCHAR*));
-                            FILETIME* newDt = (FILETIME*)realloc(existState->fileDates, newTotal * sizeof(FILETIME));
-                            if (newPl && newDt) {
-                                newPl[existState->playlistCount] = files[i];
-                                newDt[existState->playlistCount] = dates[i];
-                                existState->playlist = newPl;
-                                existState->fileDates = newDt;
+                            TCHAR** tmpPl = (TCHAR**)realloc(existState->playlist, newTotal * sizeof(TCHAR*));
+                            FILETIME* tmpDt = (FILETIME*)realloc(existState->fileDates, newTotal * sizeof(FILETIME));
+                            if (tmpPl) existState->playlist = tmpPl;
+                            if (tmpDt) existState->fileDates = tmpDt;
+                            if (tmpPl && tmpDt) {
+                                existState->playlist[existState->playlistCount] = files[i];
+                                existState->fileDates[existState->playlistCount] = dates[i];
                                 existState->playlistCount = newTotal;
+                                existState->playlistDirty = TRUE;
                                 added++;
                             } else {
                                 free(files[i]);
@@ -2518,11 +2494,16 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         }
     }
 
-    // When append mode is OFF: close old lister tab before creating new one
+    // When append mode is OFF: close the old lister tab before creating a new
+    // one, but only if it shows a file from the same directory (same browsing
+    // context). Otherwise the user may have separate sessions open.
     if (hLastPluginWnd && IsWindow(hLastPluginWnd)) {
-        HWND hOldLister = GetParent(hLastPluginWnd);
-        if (hOldLister && IsWindow(hOldLister))
-            PostMessage(hOldLister, WM_CLOSE, 0, 0);
+        PluginState* oldState = GetState(hLastPluginWnd);
+        if (oldState && SameDirectory(oldState->filePath, FileToLoad)) {
+            HWND hOldLister = GetParent(hLastPluginWnd);
+            if (hOldLister && IsWindow(hOldLister))
+                PostMessage(hOldLister, WM_CLOSE, 0, 0);
+        }
     }
 
     HWND hWnd = CreateWindowEx(0, TEXT("MediaShow2Main"), APP_NAME,
@@ -2555,7 +2536,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     state->isDarkMode = ((ShowFlags & lcp_darkmode) || (ShowFlags & lcp_darkmodenative)) ? TRUE : FALSE;
     ApplyTheme(state);
 
-    _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
+    _tcsncpy_s(state->filePath, MAX_PATH, FileToLoad, _TRUNCATE);
 
     // Start with single file — playlist will be updated asynchronously
     state->playlist      = (TCHAR**)calloc(1, sizeof(TCHAR*));
@@ -2593,7 +2574,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     int* selItems = (int*)calloc(selCount, sizeof(int));
                     SendMessage(fd.result, LB_GETSELITEMS, selCount, (LPARAM)selItems);
                     TCHAR dir[MAX_PATH];
-                    _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
+                    _tcsncpy_s(dir, MAX_PATH, FileToLoad, _TRUNCATE);
                     TCHAR* ls = _tcsrchr(dir, TEXT('\\'));
                     if (ls) *ls = 0;
                     for (int i = 0; i < selCount; i++) {
@@ -2601,39 +2582,8 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                         if (len <= 0) continue;
                         TCHAR* buf = (TCHAR*)calloc(len + 1, sizeof(TCHAR));
                         SendMessage(fd.result, LB_GETTEXT, selItems[i], (LPARAM)buf);
-                        // Parse filename from TC format
-                        TCHAR* datePos = NULL;
-                        for (TCHAR* p = buf; p[9]; p++) {
-                            if (p[2] == TEXT('.') && p[5] == TEXT('.') &&
-                                p[0] >= '0' && p[0] <= '9' && p[1] >= '0' && p[1] <= '9' &&
-                                p[3] >= '0' && p[3] <= '9' && p[4] >= '0' && p[4] <= '9' &&
-                                p[6] >= '0' && p[6] <= '9' && p[7] >= '0' && p[7] <= '9' &&
-                                p[8] >= '0' && p[8] <= '9' && p[9] >= '0' && p[9] <= '9') {
-                                datePos = p; break;
-                            }
-                        }
                         TCHAR fn[MAX_PATH] = {0};
-                        if (datePos) {
-                            int bL = (int)(datePos - buf);
-                            _tcsncpy(fn, buf, bL); fn[bL] = TEXT('\0');
-                            while (bL > 0 && (fn[bL-1] == TEXT(' ') || fn[bL-1] == 0x00A0 || fn[bL-1] == 0x0009))
-                                fn[--bL] = TEXT('\0');
-                            TCHAR* pp = fn + bL - 1;
-                            while (pp > fn && *pp >= '0' && *pp <= '9') pp--;
-                            if (pp > fn && (*pp == TEXT(' ') || *pp == 0x00A0 || *pp == 0x0009)) pp--;
-                            else { pp = fn + bL - 1; }
-                            while (pp > fn && *pp >= '0' && *pp <= '9') pp--;
-                            if (pp > fn && (*pp == TEXT(' ') || *pp == 0x00A0 || *pp == 0x0009)) pp--;
-                            else { pp = fn + bL - 1; }
-                            while (pp > fn && *pp >= '0' && *pp <= '9') pp--;
-                            if (pp > fn && (*pp == TEXT(' ') || *pp == 0x00A0 || *pp == 0x0009)) pp--;
-                            else { pp = fn + bL - 1; }
-                            *(pp + 1) = TEXT('\0');
-                            while (bL > 0 && (fn[bL-1] == TEXT(' ') || fn[bL-1] == 0x00A0 || fn[bL-1] == 0x0009))
-                                fn[--bL] = TEXT('\0');
-                        } else {
-                            _tcsncpy(fn, buf, MAX_PATH - 1);
-                        }
+                        ParseTCFileName(buf, fn, MAX_PATH);
                         TCHAR fp[MAX_PATH];
                         _sntprintf(fp, MAX_PATH, TEXT("%s\\%s"), dir, fn);
                         TCHAR* dot = _tcsrchr(fn, TEXT('.'));
@@ -2641,18 +2591,18 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                         if (IsDuplicate(state, fp)) { free(buf); continue; }
                         // Append to playlist
                         int newTotal = state->playlistCount + 1;
-                        TCHAR** np = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
-                        FILETIME* nd = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
-                        if (np && nd) {
-                            np[state->playlistCount] = _tcsdup(fp);
-                            WIN32_FILE_ATTRIBUTE_DATA fad;
-                            if (GetFileAttributesEx(fp, GetFileExInfoStandard, &fad))
-                                nd[state->playlistCount] = fad.ftLastWriteTime;
-                            state->playlist = np;
-                            state->fileDates = nd;
-                            state->playlistCount = newTotal;
-                        }
-                        free(buf);
+                        TCHAR** tmpPl = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
+                        FILETIME* tmpDt = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
+                        if (tmpPl) state->playlist = tmpPl;
+                        if (tmpDt) state->fileDates = tmpDt;                            if (tmpPl && tmpDt) {
+                                state->playlist[state->playlistCount] = _tcsdup(fp);
+                                WIN32_FILE_ATTRIBUTE_DATA fad;
+                                if (GetFileAttributesEx(fp, GetFileExInfoStandard, &fad))
+                                    state->fileDates[state->playlistCount] = fad.ftLastWriteTime;
+                                state->playlistCount = newTotal;
+                                state->playlistDirty = TRUE;
+                            }
+                            free(buf);
                     }
                     free(selItems);
                 }
@@ -2661,7 +2611,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         // If no selection and playlist didn't grow, scan directory
         if (state->playlistCount <= oldCount) {
             TCHAR dir[MAX_PATH];
-            _tcsncpy(dir, FileToLoad, MAX_PATH - 1);
+            _tcsncpy_s(dir, MAX_PATH, FileToLoad, _TRUNCATE);
             TCHAR* ls = _tcsrchr(dir, TEXT('\\'));
             if (ls) *ls = 0;
             TCHAR** files = NULL;
@@ -2676,14 +2626,15 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                         continue;
                     }
                     int newTotal = state->playlistCount + 1;
-                    TCHAR** np = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
-                    FILETIME* nd = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
-                    if (np && nd) {
-                        np[state->playlistCount] = files[i];
-                        nd[state->playlistCount] = dates[i];
-                        state->playlist = np;
-                        state->fileDates = nd;
+                    TCHAR** tmpPl = (TCHAR**)realloc(state->playlist, newTotal * sizeof(TCHAR*));
+                    FILETIME* tmpDt = (FILETIME*)realloc(state->fileDates, newTotal * sizeof(FILETIME));
+                    if (tmpPl) state->playlist = tmpPl;
+                    if (tmpDt) state->fileDates = tmpDt;
+                    if (tmpPl && tmpDt) {
+                        state->playlist[state->playlistCount] = files[i];
+                        state->fileDates[state->playlistCount] = dates[i];
                         state->playlistCount = newTotal;
+                        state->playlistDirty = TRUE;
                         added++;
                     } else {
                         free(files[i]);
@@ -2807,7 +2758,20 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
         ApplyTheme(state);
     }
 
-    _tcsncpy(state->filePath, FileToLoad, MAX_PATH - 1);
+    _tcsncpy_s(state->filePath, MAX_PATH, FileToLoad, _TRUNCATE);
+
+    // Keep playlist cursor in sync with the file TC navigated to (n/p keys)
+    if (state->playlist && state->playlistCount > 0) {
+        for (int i = 0; i < state->playlistCount; i++) {
+            if (_tcsicmp(state->playlist[i], state->filePath) == 0) {
+                if (state->playlistIndex != i) {
+                    state->playlistIndex = i;
+                    state->playlistDirty = TRUE;
+                }
+                break;
+            }
+        }
+    }
 
     state->useDirectShow = FALSE;
     state->isPlaying = FALSE;
@@ -2909,6 +2873,7 @@ void __stdcall ListCloseWindow(HWND ListWin) {
         if (state->useDirectShow) DSPlayer_Stop(state->pDSPlayer);
         else                      MFPlayer_Stop(state->pMFPlayer);
     }
+    if (hLastPluginWnd == ListWin) hLastPluginWnd = NULL;
     DestroyWindow(ListWin);
 }
 

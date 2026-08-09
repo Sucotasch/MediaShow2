@@ -59,8 +59,8 @@ cmake -B build -G "Visual Studio 17 2022" -A Win32
 cmake --build build --config Release
 
 # x64
-cmake -B build_x64 -G "Visual Studio 17 2022" -A x64
-cmake --build build_x64 --config Release
+cmake -B build-x64 -G "Visual Studio 17 2022" -A x64
+cmake --build build-x64 --config Release
 
 # Package into .wlx / .wlx64
 python package.py

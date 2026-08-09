@@ -21,11 +21,26 @@ struct tagMFPlayer {
     void*                   userData;
     volatile LONG           isPlaying;
     volatile LONG           isPaused;
+    volatile LONG           refCount;    // 1 = API owner; +1 while callback is alive
+    volatile LONG           destroying;  // set by MFPlayer_Destroy; suppresses onEnd
 };
+
+// Release one ownership reference; the struct is freed when the last reference
+// (API owner OR live callback) goes away. This keeps the object valid for an
+// in-flight MFP callback that may run after MFPlayer_Destroy returned.
+static void MF_ReleaseRef(tagMFPlayer* p) {
+    if (!p) return;
+    if (InterlockedDecrement(&p->refCount) == 0) free(p);
+}
 
 class MFCallback : public IMFPMediaPlayerCallback {
 public:
-    MFCallback(tagMFPlayer* p) : m_p(p), m_ref(1) {}
+    MFCallback(tagMFPlayer* p) : m_p(p), m_ref(1) {
+        if (m_p) InterlockedIncrement(&m_p->refCount); // keep player alive while we exist
+    }
+    ~MFCallback() {
+        if (m_p) MF_ReleaseRef(m_p); // our time is up — drop the callback reference
+    }
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) {
         if (!ppv) return E_POINTER;
         if (riid == IID_IUnknown || riid == IID_IMFPMediaPlayerCallback) {
@@ -39,11 +54,14 @@ public:
     STDMETHODIMP_(ULONG) AddRef() { return InterlockedIncrement(&m_ref); }
     STDMETHODIMP_(ULONG) Release() { ULONG r = InterlockedDecrement(&m_ref); if (!r) delete this; return r; }
     void STDMETHODCALLTYPE OnMediaPlayerEvent(MFP_EVENT_HEADER* pEventHeader) {
-        if (!pEventHeader) return;
+        if (!pEventHeader || !m_p) return;
         if (pEventHeader->eEventType == MFP_EVENT_TYPE_PLAYBACK_ENDED) {
             InterlockedExchange(&m_p->isPlaying, FALSE);
             InterlockedExchange(&m_p->isPaused,  FALSE);
-            if (m_p->onEnd) m_p->onEnd(m_p->userData);
+            // If MFPlayer_Destroy has started, userData (PluginState) may be
+            // torn down — suppress the callback instead of touching it.
+            if (!InterlockedCompareExchange(&m_p->destroying, 0, 0))
+                if (m_p->onEnd) m_p->onEnd(m_p->userData);
         }
     }
 private:
@@ -63,19 +81,23 @@ MFPlayer* MFPlayer_Create(HWND hVideoWnd, MFPlayerEndCallback onEnd, void* userD
     InitMF();
     tagMFPlayer* p = (tagMFPlayer*)calloc(1, sizeof(tagMFPlayer));
     if (!p) return NULL;
-    p->hVideoWnd = hVideoWnd;
-    p->onEnd     = onEnd;
-    p->userData  = userData;
+    p->hVideoWnd  = hVideoWnd;
+    p->onEnd      = onEnd;
+    p->userData   = userData;
+    p->refCount   = 1;         // API owner reference
+    p->destroying = FALSE;
     return (MFPlayer*)p;
 }
 
 void MFPlayer_Destroy(MFPlayer* player) {
     if (!player) return;
     tagMFPlayer* p = (tagMFPlayer*)player;
+    // Suppress onEnd FIRST — userData (PluginState) is torn down right after this.
+    InterlockedExchange(&p->destroying, TRUE);
     MFPlayer_Stop(player);
     if (p->pVideoCtrl) { p->pVideoCtrl->Release(); p->pVideoCtrl = NULL; }
     if (p->pPlayer)    { p->pPlayer->Release(); p->pPlayer = NULL; }
-    free(p);
+    MF_ReleaseRef(p);   // drop the API owner reference
 }
 
 HRESULT MFPlayer_Open(MFPlayer* player, const WCHAR* filePath) {
@@ -194,11 +216,6 @@ BOOL MFPlayer_IsPaused(MFPlayer* player) {
     return (BOOL)InterlockedCompareExchange(&((tagMFPlayer*)player)->isPaused, 0, 0);
 }
 
-BOOL MFPlayer_HasVideo(MFPlayer* player) {
-    if (!player) return FALSE;
-    return ((tagMFPlayer*)player)->pVideoCtrl != NULL;
-}
-
 double MFPlayer_GetDuration(MFPlayer* player) {
     if (!player) return 0;
     tagMFPlayer* p = (tagMFPlayer*)player;
@@ -249,20 +266,6 @@ double MFPlayer_GetPosition(MFPlayer* player) {
     }
     PropVariantClear(&pv);
     return 0;
-}
-
-HRESULT MFPlayer_GetCurrentVideoSize(MFPlayer* player, DWORD* width, DWORD* height) {
-    if (!player) return E_FAIL;
-    tagMFPlayer* p = (tagMFPlayer*)player;
-    if (!p->pVideoCtrl) return E_FAIL;
-    MFVideoNormalizedRect nr;
-    RECT dstRect;
-    HRESULT hr = p->pVideoCtrl->GetVideoPosition(&nr, &dstRect);
-    if (SUCCEEDED(hr)) {
-        if (width)  *width  = dstRect.right;
-        if (height) *height = dstRect.bottom;
-    }
-    return hr;
 }
 
 double MFPlayer_GetAspectRatio(MFPlayer* player) {
@@ -320,7 +323,7 @@ BOOL MFPlayer_AudioNeedsDS(const WCHAR* filePath) {
     // Opus:  Data1 = 0x4F707573 (ASCII "Opus")
     // Vorbis: Data1 = 0x564F5242 (ASCII "VORB")
     // AC-3:  Data1 = 0xE923AABE
-    // E-AC-3: Data1 = 0xAAC2 (Dolby Digital Plus)
+    // E-AC-3: Data1 = 0x00000AAC (wFormatTag for Dolby Digital Plus)
     // DTS:   Data1 = 0x0009
     // Note: FLAC (0xF1AC) is NOT here — MF supports FLAC since Win 10 1709
     return (subtype.Data1 == 0x4F707573 ||  // Opus

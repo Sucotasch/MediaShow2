@@ -141,6 +141,19 @@ HRESULT DSPlayer_Open(DSPlayer* player, const WCHAR* filePath) {
     if (!player || !filePath) return E_INVALIDARG;
     tagDSPlayer* p = (tagDSPlayer*)player;
 
+    // DirectShow requires COM initialized on this thread. The host (TC) may or
+    // may not have initialized it. CO_E_ALREADYINITIALIZED / RPC_E_CHANGED_MODE
+    // mean COM is usable — not errors. We never CoUninitialize: the process is
+    // owned by the host application.
+    {
+        static BOOL s_comInited = FALSE;
+        if (!s_comInited) {
+            HRESULT hrc = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+            if (SUCCEEDED(hrc) || hrc == RPC_E_CHANGED_MODE || hrc == S_FALSE)
+                s_comInited = TRUE;
+        }
+    }
+
     DSPlayer_Stop(player);
     DS_StopEventThread(p);
     DS_ReleaseGraph(p);

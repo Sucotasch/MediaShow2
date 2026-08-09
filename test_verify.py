@@ -99,8 +99,8 @@ def verify_archive(path, label):
             for line in inf.strip().split('\n'):
                 print(f"      {line}")
 
-# Run tests
-base = r'D:\Arx\Software Downloads\MediaShow_v0.9.5_patched\MediaShow2'
+# Run tests — resolve relative to this script, not a hardcoded machine path
+base = os.path.dirname(os.path.abspath(__file__))
 
 print("=" * 60)
 print("  MediaShow2 Plugin Test Report")
@@ -108,7 +108,7 @@ print("=" * 60)
 
 # T01-T02: DLL structure verification
 verify_dll(os.path.join(base, 'build', 'bin', 'Release', 'MediaShow2.dll'), 'x86 DLL')
-verify_dll(os.path.join(base, 'build_x64', 'bin', 'Release', 'MediaShow2_x64.dll'), 'x64 DLL')
+verify_dll(os.path.join(base, 'build-x64', 'bin', 'Release', 'MediaShow2_x64.dll'), 'x64 DLL')
 
 # Archive verification
 verify_archive(os.path.join(base, 'MediaShow2.wlx'), 'x86 Archive')

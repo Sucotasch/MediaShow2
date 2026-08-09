@@ -24,30 +24,21 @@ def parse_tc_line(line):
     # Step 2: Everything left of date = filename + size
     before_date = line[:date_start].rstrip()
 
-    # Step 3: Find size (3 digit groups from right)
-    # Walk backwards: digits, space, digits, space, digits, space
+    # Step 3: Find size (1..3 digit groups from right, like ParseTCFileName)
+    # Walk backwards: up to 3 groups of [digits][separator]
+    separators = (' ', '\u00A0', '\t')
     pos = len(before_date) - 1
-
-    # Group 3 (rightmost digits)
-    while pos >= 0 and before_date[pos].isdigit():
-        pos -= 1
-    if pos < 0 or before_date[pos] != ' ':
-        return before_date, False
-    pos -= 1  # skip space
-
-    # Group 2
-    while pos >= 0 and before_date[pos].isdigit():
-        pos -= 1
-    if pos < 0 or before_date[pos] != ' ':
-        return before_date, False
-    pos -= 1  # skip space
-
-    # Group 1 (leftmost digits)
-    while pos >= 0 and before_date[pos].isdigit():
-        pos -= 1
-    if pos < 0 or before_date[pos] != ' ':
-        return before_date, False
-    pos -= 1  # skip space
+    for _ in range(3):
+        digit_start = pos
+        while pos > 0 and before_date[pos].isdigit():
+            pos -= 1
+        if pos == digit_start:
+            break  # no digits — not a size group
+        if pos > 0 and before_date[pos] in separators:
+            pos -= 1
+        elif pos > 0:
+            pos = digit_start  # group glued to name — keep digits
+            break
 
     # Everything left of pos = filename
     filename = before_date[:pos + 1].rstrip()
