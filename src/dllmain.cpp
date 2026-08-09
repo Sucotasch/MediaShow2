@@ -853,15 +853,30 @@ static void UpdateListerTitle(PluginState* state) {
     // "file[1].mp4") must not be mistaken for it (hence not _tcsrchr).
     TCHAR* open = _tcschr(title, TEXT('['));
     if (!open) return;                      // not TC's bracketed format — leave as is
-    TCHAR* close = _tcschr(open, TEXT(']'));
-    if (!close) return;
+    // TC's closing bracket is the LAST ']' in the title (it appends it after
+    // the full path). The filename itself may contain ']' (e.g. "file [1080p].mp4")
+    // — taking the first ']' would cut inside the name and append a duplicated
+    // ".mp4]" tail to every rebuilt title.
+    TCHAR* close = _tcsrchr(title, TEXT(']'));
+    if (!close || close <= open) return;
 
     TCHAR newTitle[1024] = {0};
-    size_t prefixLen = (size_t)(open - title);
+    // Include the '[' itself in the copied prefix — otherwise the rebuilt
+    // title loses it ("...-file]" instead of "...-[file]"), and the next
+    // GetWindowText no longer finds '[' → title stops updating entirely.
+    size_t prefixLen = (size_t)(open - title) + 1;
     if (prefixLen >= 1024) return;          // pathologically long title — skip
     memcpy(newTitle, title, prefixLen * sizeof(TCHAR));
     _tcsncpy_s(newTitle + prefixLen, 1024 - prefixLen, fname, _TRUNCATE);
     _tcscat_s(newTitle, 1024, close);       // "]…" suffix, preserves locale
+    {
+        TCHAR dbg[1200];
+        _sntprintf(dbg, 1200,
+            TEXT("Title: fname='%s' old='%s' open=%d close=%d -> new='%s'\n"),
+            fname, title, open ? (int)(open - title) : -1,
+            close ? (int)(close - title) : -1, newTitle);
+        OutputDebugString(dbg);
+    }
     SetWindowText(state->hParentWnd, newTitle);
 }
 
