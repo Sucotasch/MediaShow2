@@ -870,14 +870,6 @@ static void UpdateListerTitle(PluginState* state) {
     memcpy(newTitle, title, prefixLen * sizeof(TCHAR));
     _tcsncpy_s(newTitle + prefixLen, 1024 - prefixLen, fname, _TRUNCATE);
     _tcscat_s(newTitle, 1024, close);       // "]…" suffix, preserves locale
-    {
-        TCHAR dbg[1200];
-        _sntprintf(dbg, 1200,
-            TEXT("Title: fname='%s' old='%s' open=%d close=%d -> new='%s'\n"),
-            fname, title, open ? (int)(open - title) : -1,
-            close ? (int)(close - title) : -1, newTitle);
-        OutputDebugString(dbg);
-    }
     SetWindowText(state->hParentWnd, newTitle);
 }
 
