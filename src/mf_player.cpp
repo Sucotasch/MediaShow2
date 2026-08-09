@@ -169,7 +169,12 @@ HRESULT MFPlayer_Stop(MFPlayer* player) {
     tagMFPlayer* p = (tagMFPlayer*)player;
     if (!p->pPlayer) return S_FALSE;
     HRESULT hr = p->pPlayer->Stop();
-    Sleep(50);
+    // Wait for async MFP teardown only if the player was actually rendering.
+    // A second Stop (e.g. MFPlayer_Destroy right after an earlier Stop in
+    // ListLoadNextW/PlayIndex) has no in-flight async work — sleeping again
+    // just adds ~50 ms to every file switch.
+    BOOL wasPlaying = InterlockedCompareExchange(&p->isPlaying, 0, 0);
+    if (wasPlaying) Sleep(50);
     if (SUCCEEDED(hr)) {
         InterlockedExchange(&p->isPlaying, FALSE);
         InterlockedExchange(&p->isPaused,  FALSE);
