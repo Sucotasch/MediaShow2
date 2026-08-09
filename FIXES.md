@@ -4,7 +4,7 @@
 
 Порядок внедрения — от безопасного к рискованному. Пункты с пометкой **[TC-тест]** требуют ручной проверки в Total Commander после сборки.
 
-> **Статус внедрения (2026-08-09):** все безопасные фиксы F1–F6, F8–F15 и F7 фаза 1 **внедрены**, сборка чистая, все python-тесты проходят, быстрый тест в TC — видимых багов нет. **F7 фаза 2 (ListLoadNextW)** остаётся отложенной до отдельного TC-прогона сценария 6.avi→7.mp4→5.mp4. F16 — не трогаем осознанно. См. «Статус внедрения» внизу.
+> **Статус внедрения (2026-08-09):** все фиксы F1–F15, включая F7 фазу 2 (ListLoadNextW → немедленный `RecreateVideoWindow`, механизм `IDT_RECREATE` удалён), **внедрены**, сборка чистая, все python-тесты проходят, быстрый тест в TC — видимых багов нет. F7 фаза 2 требует контрольного прогона быстрых ↓/↑ в TC (риск исторического хэнга на быстрых переключениях — откат одной командой к `79b7220`). F16 — не трогаем осознанно. См. «Статус внедрения» внизу.
 
 ---
 
@@ -297,7 +297,7 @@ void MFPlayer_Destroy(MFPlayer* player) {
 
 ## F7. C7 — единая стратегия сброса видеорежима **[TC-тест]**
 
-> ✅ **Фаза 1 внедрена** (PlayIndex fallback + ListLoadW QuickView → `RecreateVideoWindow`, с синком `DSPlayer_SetVideoWnd`). ⏳ **Фаза 2 отложена** — см. ниже.
+> ✅ **Фазы 1 и 2 внедрены** (2026-08-09): PlayIndex fallback, ListLoadW QuickView и ListLoadNextW fallback — везде `RecreateVideoWindow` + синк `DSPlayer_SetVideoWnd`, порядок `MFPlayer_Destroy` → `RecreateVideoWindow` единый во всех ветках. Механизм отложенного `IDT_RECREATE` удалён полностью (таймер, ветка WM_TIMER, KillTimer в WM_DESTROY), `DestroyChildVideoWindows` и `#define IDT_RECREATE` удалены как мёртвый код.
 
 ### Проблема
 Три разных подхода: `PlayIndex` fallback НЕ пересоздаёт hVideoWnd при MF→MF; `ListLoadNextW` fallback делает `DestroyChildVideoWindows` + отложенный `IDT_RECREATE` (300 мс); `ListLoadW` QuickView — `DestroyChildVideoWindows`. По PROJECT_CONTEXT.md правильная стратегия — `RecreateVideoWindow`.
@@ -519,7 +519,7 @@ def parse_tc_line(line):
 | F6 (рефкаунт MF) | ✅ внедрено |
 | F8 (вкладки), F7 фаза 1 | ✅ внедрено |
 | F12, F13, F14 (playlistDirty), M8-комментарий | ✅ внедрено |
-| F7 фаза 2 (ListLoadNextW, IDT_RECREATE) | ⏳ отложена — только после TC-теста |
+| F7 фаза 2 (ListLoadNextW → немедленный RecreateVideoWindow, IDT_RECREATE удалён) | ✅ внедрено — требует контрольного TC-прогона быстрых ↓/↑ (откат к `79b7220`) |
 | F16 (M3, L5) | ➖ не трогаем осознанно |
 
-Валидация после внедрения: `cmake --build build-x64 --config Release` — 0 ошибок/предупреждений; `test_parse.py`, `test_parse_c.py`, `test_bug.py` — ALL PASSED; `test_verify.py` — T01–T06 PASS; `package.py` — оба архива собраны. Ручной тест в TC (F3/QuickView) — видимых багов нет.
+Валидация после внедрения: `cmake --build build-x64 --config Release` — 0 ошибок/предупреждений; `test_parse.py`, `test_parse_c.py`, `test_bug.py` — ALL PASSED; `test_verify.py` — T01–T06 PASS; `package.py` — оба архива собраны. Ручной тест в TC (F3/QuickView) — видимых багов нет. **F7 фаза 2:** контрольный прогон в TC — быстрые ↓/↑ по сценарию 6.avi→7.mp4→5.mp4 (откат к коммиту `79b7220`, если хэнг вернётся).

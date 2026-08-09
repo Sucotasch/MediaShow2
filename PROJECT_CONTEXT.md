@@ -295,7 +295,7 @@ MediaShow2/
   - Безопасный realloc двух массивов (files+dates) — последовательный realloc без висячих указателей (F3).
   - `playlistIndex` синхронизируется в `ListLoadNextW` (F4); `m4a` добавлен в `IsAudioOnly` (F5); даты — `ftLastWriteTime` единообразно (F10).
   - Рефкаунт + флаг `destroying` у MFPlayer — устранён use-after-free в колбэке MF (F6, все операции Interlocked).
-  - `RecreateVideoWindow` в PlayIndex fallback и QuickView-ветке ListLoadW (F7 фаза 1, с синком `DSPlayer_SetVideoWnd`). Фаза 2 (ListLoadNextW, отложенный IDT_RECREATE) — намеренно отложена до TC-теста сценария 6.avi→7.mp4→5.mp4.
+  - `RecreateVideoWindow` в PlayIndex fallback, QuickView-ветке ListLoadW и fallback-ветке ListLoadNextW (F7 фазы 1+2, с синком `DSPlayer_SetVideoWnd`); порядок `MFPlayer_Destroy` → `RecreateVideoWindow` единый во всех ветках; отложенный механизм `IDT_RECREATE` удалён (таймер, ветка WM_TIMER, KillTimer в WM_DESTROY), `DestroyChildVideoWindows` и `IDT_RECREATE` удалены как мёртвый код. Требует контрольного TC-прогона быстрых ↓/↑ (исторический риск хэнга на быстрых переключениях; откат к `79b7220`).
   - `hLastPluginWnd` в файловой области + закрытие старой вкладки только из той же директории (`SameDirectory`) + очистка в `ListCloseWindow` (F8).
   - Удалена мёртвая ветка `MFPlayer_HasVideo` (F9); `CoInitializeEx` в `DSPlayer_Open` без `CoUninitialize` (F11).
   - Удалён мёртвый код: `BuildPlaylistFromSelection`, `WM_DEFERRED_GETFILES`, параметр `useDS`, неиспользуемые константы IDM (F12); мелкие фиксы M2/M4/M5/M6/M10 (F13); M8-комментарий про E-AC-3.
