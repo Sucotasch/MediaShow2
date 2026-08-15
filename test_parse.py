@@ -1,7 +1,13 @@
 """
 Test parsing of TC LB_GETTEXT strings.
 Right-to-left approach: find DD.MM.YYYY, strip date+time+attrs,
-then find size (3 digit groups), remaining = filename.
+then find size (1..3 digit groups), remaining = filename.
+
+Real TC format (see PROJECT_CONTEXT.md):
+    filename.ext[SPC]NNN[NBSP]NNN[NBSP]NNN[TAB]DD.MM.YYYY[SPC]HH:MM[SPC]-a--
+Separators between size groups are NON-BREAKING SPACES (U+00A0), and a
+TAB (U+0009) precedes the date — not plain spaces. parse_tc_line mirrors
+the C ParseTCFileName (dllmain.cpp), which treats space/NBSP/TAB alike.
 """
 
 def parse_tc_line(line):
@@ -45,45 +51,56 @@ def parse_tc_line(line):
     return filename, True
 
 
-# Test data from List.txt
+# Real data (as TC emits it)
 test_lines = [
-    "02 - Arpadhazi Margit balladaja.mp3 12 681 905 02.10.2021 18:57 -a--",
-    "03 - Galamb.mp3 13 881 408 02.10.2021 18:57 -a--",
-    "04 - Vedj meg Lang! - 1. resz.mp3 11 339 207 02.10.2021 18:57 -a--",
+    ("02 - Arpadhazi Margit balladaja.mp3 12 681 905 02.10.2021 18:57 -a--",
+     "02 - Arpadhazi Margit balladaja.mp3"),
+    ("03 - Galamb.mp3 13 881 408 02.10.2021 18:57 -a--",
+     "03 - Galamb.mp3"),
+    ("04 - Vedj meg Lang! - 1. resz.mp3 11 339 207 02.10.2021 18:57 -a--",
+     "04 - Vedj meg Lang! - 1. resz.mp3"),
 ]
 
-# Edge cases
+# Edge cases: size groups 1..3, numeric names, no extension
 edge_cases = [
-    "short.mp3 1234 01.01.2024 12:00 -a--",           # 1 group size
-    "file.mp3 12 345 01.01.2024 12:00 -a--",           # 2 groups size
-    "name.mp3 999 999 999 01.01.2024 12:00 -a--",      # max size
-    "a.mp3 1 01.01.2024 12:00 -a--",                   # minimal
-    "noext 12 345 678 01.01.2024 12:00 -a--",          # no extension
-    "12345.mp3 12 345 678 01.01.2024 12:00 -a--",      # numeric filename
+    ("short.mp3 1234 01.01.2024 12:00 -a--", "short.mp3"),            # 1 group
+    ("file.mp3 12 345 01.01.2024 12:00 -a--", "file.mp3"),            # 2 groups
+    ("name.mp3 999 999 999 01.01.2024 12:00 -a--", "name.mp3"),       # 3 groups
+    ("a.mp3 1 01.01.2024 12:00 -a--", "a.mp3"),                       # minimal
+    ("noext 12 345 678 01.01.2024 12:00 -a--", "noext"),              # no extension
+    ("12345.mp3 12 345 678 01.01.2024 12:00 -a--", "12345.mp3"),      # numeric name
+    ("track123.mp3 12 681 905 02.10.2021 18:57 -a--", "track123.mp3"),  # name ends in digits
+]
+
+# Real TC format: NBSP (U+00A0) between size groups, TAB (U+0009) before date
+tc_format_cases = [
+    ("02 - Arpadhazi Margit balladaja.mp3 12\u00A0681\u00A0905\u000902.10.2021 18:57 -a--",
+     "02 - Arpadhazi Margit balladaja.mp3"),
+    ("short.mp3 1234\u000901.01.2024 12:00 -a--", "short.mp3"),
+    ("a.mp3 1\u000901.01.2024 12:00 -a--", "a.mp3"),
 ]
 
 print("=== TC Line Parsing Test ===\n")
 
 all_passed = True
-for i, line in enumerate(test_lines):
-    filename, ok = parse_tc_line(line)
-    status = "OK" if ok else "FAIL"
-    print(f"Test {i+1}: [{status}]")
-    print(f"  Input:    '{line}'")
-    print(f"  Filename: '{filename}'")
-    print()
-    if not ok:
-        all_passed = False
 
-print("=== Edge Cases ===\n")
-for i, line in enumerate(edge_cases):
-    filename, ok = parse_tc_line(line)
-    status = "OK" if ok else "FAIL"
-    print(f"Edge {i+1}: [{status}]")
-    print(f"  Input:    '{line}'")
-    print(f"  Filename: '{filename}'")
-    print()
-    if not ok:
-        all_passed = False
+def run(label, cases):
+    global all_passed
+    for i, (line, expected) in enumerate(cases):
+        filename, ok = parse_tc_line(line)
+        good = ok and filename == expected
+        all_passed = all_passed and good
+        status = "OK" if good else "FAIL"
+        print(f"{label} {i+1}: [{status}]")
+        print(f"  Input:    {line!r}")
+        print(f"  Filename: {filename!r}")
+        if not good:
+            print(f"  Expected: {expected!r}")
+        print()
+
+run("Test", test_lines)
+run("Edge", edge_cases)
+run("TCfmt", tc_format_cases)
 
 print(f"{'ALL TESTS PASSED' if all_passed else 'SOME TESTS FAILED'}")
+raise SystemExit(0 if all_passed else 1)

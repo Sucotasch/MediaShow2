@@ -29,9 +29,6 @@ static const PROPERTYKEY kPKEY_Audio_EncodingBitrate =
 static const PROPERTYKEY kPKEY_Media_Duration =
     {0x64440490, 0x4C8B, 0x11D1, {0x8B, 0x70, 0x08, 0x00, 0x36, 0xB1, 0x1A, 0x03}, 3};
 
-#pragma comment(lib, "comctl32.lib")
-#pragma comment(lib, "uxtheme.lib")
-
 #ifndef min
 #define min(a,b) ((a)<(b)?(a):(b))
 #endif
@@ -42,7 +39,6 @@ static const PROPERTYKEY kPKEY_Media_Duration =
 static TCHAR iniPath[MAX_PATH] = {0};
 static ATOM  mainWndClass      = 0;
 static ATOM  fullscreenWndClass = 0;
-static HWND  s_fixMaximizeWnd  = NULL;
 static HWND  hLastPluginWnd    = NULL;  // last plugin window (for append mode)
 
 /* -----------------------------------------------------------------------
@@ -70,6 +66,7 @@ struct PluginState {
     HWND hSeekbar;
     HWND hVolSlider;
     HWND hFullscreenWnd;    // borderless popup when in fullscreen
+    HWND fixMaximizeWnd;    // lister window to clear WS_MAXIMIZE on (per-window)
     MFPlayer* pMFPlayer;
     DSPlayer* pDSPlayer;
     BOOL  useDirectShow;
@@ -372,7 +369,7 @@ static void ScanDirectoryForMedia(TCHAR* dir, TCHAR*** outFiles, FILETIME** outD
     *outCount = count;
 }
 
-static void BuildPlaylist(PluginState* state, HWND /*hListerWnd*/, TCHAR* currentFile) {
+static void BuildPlaylist(PluginState* state, TCHAR* currentFile) {
     FreePlaylist(state);
 
     TCHAR dir[MAX_PATH];
@@ -529,7 +526,7 @@ static void UpdatePlaylist(PluginState* state) {
    Get selected files from TC
    Find LCLListBox in TTOTAL_CMD and try LB_GETSELITEMS
    ----------------------------------------------------------------------- */
-struct EnumFindData { HWND result; DWORD processId; };
+struct EnumFindData { HWND result; };
 
 static BOOL CALLBACK EnumFindLCLListBox(HWND hWnd, LPARAM lParam) {
     EnumFindData* pfd = (EnumFindData*)lParam;
@@ -610,7 +607,7 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     }
 
     // Find LCLListBox
-    EnumFindData fd = {0, 0};
+    EnumFindData fd = {0};
     EnumChildWindows(hTC, EnumFindLCLListBox, (LPARAM)&fd);
 
     if (!fd.result) {
@@ -627,6 +624,7 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     if (selCount <= 0) return;
 
     int* selItems = (int*)calloc(selCount, sizeof(int));
+    if (!selItems) return;
     SendMessage(hListBox, LB_GETSELITEMS, selCount, (LPARAM)selItems);
 
     TCHAR dir[MAX_PATH];
@@ -637,6 +635,13 @@ static void RequestSelectedFiles(HWND hListerWnd, PluginState* state) {
     TCHAR** files = (TCHAR**)calloc(selCount, sizeof(TCHAR*));
     free(state->fileDates);
     state->fileDates = (FILETIME*)calloc(selCount, sizeof(FILETIME));
+    if (!files || !state->fileDates) {
+        free(files);
+        free(state->fileDates);
+        state->fileDates = NULL;
+        free(selItems);
+        return;
+    }
     int validCount = 0;
 
     for (int i = 0; i < selCount; i++) {
@@ -736,6 +741,8 @@ static void UpdateLayout(PluginState* state) {
     int volX  = w - volW - pad;
     int seekW = volX - seekX - 4;
     if (seekW < 40) seekW = 40;
+    if (seekW > volX - seekX) seekW = volX - seekX;   // не заезжать на слайдер громкости
+    if (seekW < 0) seekW = 0;
 
     int trackY = pad + (tbH - ctrlH) / 2;
     if (state->hSeekbar)
@@ -748,6 +755,11 @@ static void UpdateLayout(PluginState* state) {
 
     int contentH = h - tbH - pad - statusH;
     if (contentH < 0) contentH = 0;
+    if (contentH <= 0) {                        // окно слишком маленькое — контент скрыть
+        if (state->hVideoWnd)  ShowWindow(state->hVideoWnd,  SW_HIDE);
+        if (state->hPlaylist)  ShowWindow(state->hPlaylist,  SW_HIDE);
+        return;                                  // тулбар/статус уже расставлены выше
+    }
 
     // Видео скрыто когда плейлист виден
     if (state->hVideoWnd)
@@ -1041,6 +1053,12 @@ static LRESULT CALLBACK FullscreenWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
         }
         return 0;
     case WM_LBUTTONDBLCLK:
+        if (state)
+            SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+        return 0;
+    case WM_CLOSE:
+        // Alt+F4 / закрытие попапа: аккуратный выход из фуллскрина
+        // (репарентинг + ShowCursor(TRUE)), а не прямое уничтожение
         if (state)
             SendMessage(state->hMainWnd, WM_COMMAND, IDM_FULLSCREEN, 0);
         return 0;
@@ -2289,17 +2307,18 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 MFPlayer_GetPosition(state->pMFPlayer);
             UpdateStatus(state);
             UpdateSeekbar(state);
-        } else if (wParam == 9998) {
+        } else if (wParam == 9998 && state) {
             KillTimer(hWnd, 9998);
-            if (s_fixMaximizeWnd && IsWindow(s_fixMaximizeWnd) && !state->isFullscreen) {
-                LONG st = GetWindowLong(s_fixMaximizeWnd, GWL_STYLE);
+            HWND fixWnd = state->fixMaximizeWnd;
+            state->fixMaximizeWnd = NULL;
+            if (fixWnd && IsWindow(fixWnd) && !state->isFullscreen) {
+                LONG st = GetWindowLong(fixWnd, GWL_STYLE);
                 if (st & WS_MAXIMIZE) {
-                    SetWindowLong(s_fixMaximizeWnd, GWL_STYLE, st & ~WS_MAXIMIZE);
-                    SetWindowPos(s_fixMaximizeWnd, NULL, 0, 0, 0, 0,
+                    SetWindowLong(fixWnd, GWL_STYLE, st & ~WS_MAXIMIZE);
+                    SetWindowPos(fixWnd, NULL, 0, 0, 0, 0,
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
                 }
             }
-            s_fixMaximizeWnd = NULL;
         }
         return 0;
 
@@ -2310,6 +2329,7 @@ static LRESULT CALLBACK cbNewMain(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             if (state->isFullscreen && state->hFullscreenWnd) {
                 SetParent(state->hVideoWnd, hWnd);
                 DestroyWindow(state->hFullscreenWnd);
+                ShowCursor(TRUE);   // восстановить счётчик курсора (идемпотентно)
             }
             FreePlaylist(state);
             MFPlayer_Destroy(state->pMFPlayer);
@@ -2351,6 +2371,7 @@ static void RegisterMainWndClass() {
 HWND __stdcall ListLoad(HWND ParentWin, char* FileToLoad, int ShowFlags) {
     int n = MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, NULL, 0);
     TCHAR* w = (TCHAR*)calloc(n, sizeof(TCHAR));
+    if (!w) return NULL;
     MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, w, n);
     HWND h = ListLoadW(ParentWin, w, ShowFlags);
     free(w);
@@ -2386,7 +2407,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
             // Get selected files from TC
             HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
             if (hTC) {
-                EnumFindData fd = {0, 0};
+                EnumFindData fd = {0};
                 EnumChildWindows(hTC, EnumFindLCLListBox, (LPARAM)&fd);
                 if (fd.result) {
                     HWND hListBox = fd.result;
@@ -2499,7 +2520,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                     }
                 }
             }
-            s_fixMaximizeWnd = GetParent(hLastPluginWnd);
+            existState->fixMaximizeWnd = GetParent(hLastPluginWnd);
             SetTimer(hLastPluginWnd, 9998, 300, NULL);
             PostMessage(ParentWin, WM_CLOSE, 0, 0);
             return NULL;
@@ -2535,11 +2556,10 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         }
     }
-    s_fixMaximizeWnd = ParentWin;
-    SetTimer(hWnd, 9998, 300, NULL);
-
     PluginState* state = GetState(hWnd);
     if (!state) { DestroyWindow(hWnd); return NULL; }
+    state->fixMaximizeWnd = ParentWin;
+    SetTimer(hWnd, 9998, 300, NULL);
 
     // Defect #7 fix: store ParentWin for correct itm_next routing
     state->hParentWnd = ParentWin;
@@ -2577,7 +2597,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         // Try to get selected files from TC
         HWND hTC = FindWindow(TEXT("TTOTAL_CMD"), NULL);
         if (hTC) {
-            EnumFindData fd = {0, 0};
+            EnumFindData fd = {0};
             EnumChildWindows(hTC, EnumFindLCLListBox, (LPARAM)&fd);
             if (fd.result) {
                 int selCount = (int)SendMessage(fd.result, LB_GETSELCOUNT, 0, 0);
@@ -2661,7 +2681,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
         // Append mode OFF: normal flow (skip in QuickView)
         RequestSelectedFiles(ParentWin, state);
         if (state->playlistCount <= 1)
-            BuildPlaylist(state, NULL, FileToLoad);
+            BuildPlaylist(state, FileToLoad);
     }
 
     // Update showPlaylist based on first file in playlist
@@ -2739,6 +2759,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
 int __stdcall ListLoadNext(HWND ParentWin, HWND PluginWin, char* FileToLoad, int ShowFlags) {
     int n = MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, NULL, 0);
     TCHAR* w = (TCHAR*)calloc(n, sizeof(TCHAR));
+    if (!w) return LISTPLUGIN_ERROR;
     MultiByteToWideChar(CP_ACP, 0, FileToLoad, -1, w, n);
     int r = ListLoadNextW(ParentWin, PluginWin, w, ShowFlags);
     free(w);
@@ -2791,9 +2812,13 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
         // New file needs DS. Release MF first (it holds hVideoWnd via
         // IMFVideoDisplayControl), then recreate the window for VMR-9 and
         // recreate MFPlayer so it doesn't hold a stale HWND.
-        MFPlayer_Destroy(state->pMFPlayer);
-        RecreateVideoWindow(state);
-        state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+        // DS->DS reuses the window: DSPlayer_Open detaches the old graph
+        // (DS_ReleaseGraph) and attaches a new one to the same HWND.
+        if (!prevWasDS) {
+            MFPlayer_Destroy(state->pMFPlayer);
+            RecreateVideoWindow(state);
+            state->pMFPlayer = MFPlayer_Create(state->hVideoWnd, OnMFEnd, state);
+        }
         DSPlayer_SetVideoWnd(state->pDSPlayer, state->hVideoWnd);
         hr = DSPlayer_Open(state->pDSPlayer, FileToLoad);
         if (SUCCEEDED(hr)) {

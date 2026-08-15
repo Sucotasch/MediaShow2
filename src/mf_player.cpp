@@ -7,12 +7,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#pragma comment(lib, "mfplat.lib")
-#pragma comment(lib, "mf.lib")
-#pragma comment(lib, "mfplay.lib")
-#pragma comment(lib, "mfreadwrite.lib")
-#pragma comment(lib, "mfuuid.lib")
-
 struct tagMFPlayer {
     IMFPMediaPlayer*        pPlayer;
     IMFVideoDisplayControl*  pVideoCtrl;
@@ -55,7 +49,16 @@ public:
     STDMETHODIMP_(ULONG) Release() { ULONG r = InterlockedDecrement(&m_ref); if (!r) delete this; return r; }
     void STDMETHODCALLTYPE OnMediaPlayerEvent(MFP_EVENT_HEADER* pEventHeader) {
         if (!pEventHeader || !m_p) return;
-        if (pEventHeader->eEventType == MFP_EVENT_TYPE_PLAYBACK_ENDED) {
+        // PLAYBACK_ENDED — normal track end; ERROR — async playback failure;
+        // MEDIAITEM_CREATED with failing hrEvent — media item failed to create
+        // (MFPlayer_Open/Play already returned S_OK, so the sync fallback
+        // never ran). Treat all as "track over": the UI thread will try the
+        // next track or stop (PlayIndex has a bounded retry loop), instead of
+        // silently showing a dead player.
+        if (pEventHeader->eEventType == MFP_EVENT_TYPE_PLAYBACK_ENDED ||
+            pEventHeader->eEventType == MFP_EVENT_TYPE_ERROR ||
+            (pEventHeader->eEventType == MFP_EVENT_TYPE_MEDIAITEM_CREATED &&
+             FAILED(pEventHeader->hrEvent))) {
             InterlockedExchange(&m_p->isPlaying, FALSE);
             InterlockedExchange(&m_p->isPaused,  FALSE);
             // If MFPlayer_Destroy has started, userData (PluginState) may be

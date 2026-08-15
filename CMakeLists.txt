@@ -38,8 +38,13 @@ target_link_libraries(MediaShow2 PRIVATE
     shlwapi
     dwmapi
     uxtheme
-    mfreadwrite
     propsys
+    mfplat
+    mf
+    mfplay
+    mfreadwrite
+    mfuuid
+    strmiids
 )
 
 target_compile_options(MediaShow2 PRIVATE

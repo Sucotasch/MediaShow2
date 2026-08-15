@@ -2,10 +2,6 @@
 #include <dshow.h>
 #include <stdlib.h>
 
-#pragma comment(lib, "strmiids.lib")
-#pragma comment(lib, "ole32.lib")
-#pragma comment(lib, "oleaut32.lib")
-
 // Find first unconnected output pin on a filter matching a major media type
 static IPin* DS_FindOutputPin(IBaseFilter* pFilter, REFGUID majorType) {
     IEnumPins* pEnum = NULL;

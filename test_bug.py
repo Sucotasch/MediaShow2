@@ -1,4 +1,14 @@
-"""Test: is beforeLen update the bug?"""
+"""Test: is beforeLen update the bug?
+
+NOTE (2026-08-15): analysis shows the "buggy" and "fixed" variants are
+behaviourally identical on ALL inputs — the stale-before_len final trim
+never executes, because after the initial trailing-space trim the char at
+fn[before_len-1] is never a space. So this test documents parser
+invariants and guards against the IndexError class (writing fn[before_len]
+past the buffer end), not against the theoretical stale-len bug. It
+cannot serve as a regression discriminator for that bug; do not extend it
+with "distinguishing" cases that don't exist.
+"""
 
 def parse_c_algorithm_buggy(buf):
     """C code WITHOUT beforeLen update after truncation."""
