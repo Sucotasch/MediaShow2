@@ -302,6 +302,8 @@ MediaShow2/
   - `SavePlaylist` только при реальном изменении — флаг `playlistDirty` (F14), сброс после записи.
   - Починены тесты: `test_bug.py` (IndexError), `test_parse.py` (2/8 FAIL → ALL PASSED), `test_verify.py` (хардкод пути → `build-x64` относительно скрипта) (F15).
 
+- **2026-08-15 — AV1-видео (webm) не воспроизводилось — исправлено (F17):** MFP с реальным видео-окном встаёт на рендере AV1 (`Open`/`Play` = S_OK, но позиция/длительность 0.00); H.264 и VP9 через MF играют, AV1 играет только через DirectShow/VMR-9. Эвристика `MFPlayer_AudioNeedsDS` расширена до `MFPlayer_NeedsDS`: помимо аудио-кодеков (Opus/Vorbis/AC-3/E-AC-3/DTS) проверяется видео-субтип, **AV1 → DirectShow**. Тест: `6ix9ine.webm` (AV1+Opus) играет через DS; `7.mp4` (H.264) и `6.avi` (VP9) остаются на MF. Пересобраны x86+x64, переупакованы .wlx/.wlx64.
+
 ### Плейлист из выделенных файлов
 
 **Статус:** Работает. Механизм передачи выделенных файлов из TC в плагин.
@@ -582,6 +584,9 @@ IsQuickView определяется через `GetParent(ParentWin)`: если
 
 ### MFPlayer_Open: всегда возвращает S_OK
 Даже если `QI(IID_IMFVideoDisplayControl)` возвращает `E_NOINTERFACE`, `MFPlayer_Open` возвращает `S_OK` потому что `MFPCreateMediaPlayer`ucceeded. Это делает диагностику сложной — нужно проверять `pVideoCtrl != NULL` отдельно.
+
+### AV1 (webm): MFP встаёт на видео-рендере — нужен DirectShow
+Эмпирически (харнесс, 2026-08-15): `MFPlayer_Open`/`MFPlayer_Play` для `6ix9ine.webm` (AV1+Opus) возвращают S_OK, но позиция/длительность застревают на 0.00 — весь пайплайн стопорится, когда MFP отдаёт видео в реальное окно (EVR не может презентовать AV1). Тот же файл без окна (hVideoWnd=NULL) играет, что указывает на видео-рендер как причину. DirectShow + VMR-9 играет его (позиция растёт, длительность 177 с). Поэтому `MFPlayer_NeedsDS` направляет файлы с AV1-видео в DS; H.264 и VP9 остаются на MF.
 
 ### MFPlayer_Stop + Sleep(50)
 `MFPlayer_Stop` вызывает `pPlayer->Stop()` + `Sleep(50)`. Sleep(50) нужен для завершения async операций MFP. Этого может быть недостаточно для полной очистки VP9 pipeline.

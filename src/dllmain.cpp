@@ -1149,7 +1149,7 @@ static void PlayIndex(PluginState* state, int idx) {
         TCHAR* f = state->playlist[idx];
 
         HRESULT hr = E_FAIL;
-        BOOL needsDS = state->pDSPlayer && MFPlayer_AudioNeedsDS(f);
+        BOOL needsDS = state->pDSPlayer && MFPlayer_NeedsDS(f);
 
         if (needsDS) {
             // File needs DS — MF holds hVideoWnd via IMFVideoDisplayControl.
@@ -2689,7 +2689,7 @@ HWND __stdcall ListLoadW(HWND ParentWin, TCHAR* FileToLoad, int ShowFlags) {
     HRESULT hr = E_FAIL;
 
     // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
-    if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
+    if (state->pDSPlayer && MFPlayer_NeedsDS(FileToLoad)) {
         // Recreate hVideoWnd and MFPlayer — RecreateVideoWindow destroys old HWND,
         // so pMFPlayer would have a stale handle if we don't recreate it.
         RecreateVideoWindow(state);
@@ -2787,7 +2787,7 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     HRESULT hr = E_FAIL;
 
     // If MF can't handle the audio codec (e.g. Opus), skip MF and use DS directly
-    if (state->pDSPlayer && MFPlayer_AudioNeedsDS(FileToLoad)) {
+    if (state->pDSPlayer && MFPlayer_NeedsDS(FileToLoad)) {
         // New file needs DS. Release MF first (it holds hVideoWnd via
         // IMFVideoDisplayControl), then recreate the window for VMR-9 and
         // recreate MFPlayer so it doesn't hold a stale HWND.

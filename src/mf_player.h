@@ -24,6 +24,6 @@ double  MFPlayer_GetAspectRatio(MFPlayer* player);
 
 void    MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc);
 
-BOOL    MFPlayer_AudioNeedsDS(const WCHAR* filePath);
+BOOL    MFPlayer_NeedsDS(const WCHAR* filePath);
 
 #endif /* MF_PLAYER_H */

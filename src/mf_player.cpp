@@ -302,7 +302,7 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     p->pVideoCtrl->SetVideoPosition(NULL, &wrc);
 }
 
-BOOL MFPlayer_AudioNeedsDS(const WCHAR* filePath) {
+BOOL MFPlayer_NeedsDS(const WCHAR* filePath) {
     if (!filePath || !filePath[0]) return FALSE;
 
     InitMF();
@@ -311,19 +311,9 @@ BOOL MFPlayer_AudioNeedsDS(const WCHAR* filePath) {
     HRESULT hr = MFCreateSourceReaderFromURL(filePath, NULL, &reader);
     if (FAILED(hr) || !reader) return FALSE;
 
-    IMFMediaType* audioType = NULL;
-    hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &audioType);
-    if (FAILED(hr) || !audioType) {
-        reader->Release();
-        return FALSE; // No audio stream → video-only file, MF handles fine
-    }
+    BOOL needsDS = FALSE;
 
-    GUID subtype = GUID_NULL;
-    audioType->GetGUID(MF_MT_SUBTYPE, &subtype);
-    audioType->Release();
-    reader->Release();
-
-    // Audio codecs that MF can READ from container but CANNOT decode
+    // --- Audio: codecs MF can READ from container but CANNOT decode ---
     // (no MFT decoder registered). Check by Data1 (WAVE format tag in GUID).
     // Opus:  Data1 = 0x4F707573 (ASCII "Opus")
     // Vorbis: Data1 = 0x564F5242 (ASCII "VORB")
@@ -331,9 +321,36 @@ BOOL MFPlayer_AudioNeedsDS(const WCHAR* filePath) {
     // E-AC-3: Data1 = 0x00000AAC (wFormatTag for Dolby Digital Plus)
     // DTS:   Data1 = 0x0009
     // Note: FLAC (0xF1AC) is NOT here — MF supports FLAC since Win 10 1709
-    return (subtype.Data1 == 0x4F707573 ||  // Opus
-            subtype.Data1 == 0x564F5242 ||  // Vorbis
-            subtype.Data1 == 0xE923AABE ||  // AC-3
-            subtype.Data1 == 0x00000AAC ||  // E-AC-3 (Dolby Digital Plus)
-            subtype.Data1 == 0x00000009);   // DTS
+    IMFMediaType* audioType = NULL;
+    hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, &audioType);
+    if (SUCCEEDED(hr) && audioType) {
+        GUID subtype = GUID_NULL;
+        audioType->GetGUID(MF_MT_SUBTYPE, &subtype);
+        audioType->Release();
+        needsDS = (subtype.Data1 == 0x4F707573 ||  // Opus
+                   subtype.Data1 == 0x564F5242 ||  // Vorbis
+                   subtype.Data1 == 0xE923AABE ||  // AC-3
+                   subtype.Data1 == 0x00000AAC ||  // E-AC-3 (Dolby Digital Plus)
+                   subtype.Data1 == 0x00000009);   // DTS
+    }
+
+    // --- Video: codecs MF cannot render into the plugin window ---
+    // Empirically (this system): MFPlayer with a real video HWND stalls the
+    // whole pipeline for AV1 (Open/Play return S_OK, but the clock never
+    // advances — pos/dur stay 0). DirectShow + VMR-9 plays the same file.
+    // VP9 and H.264 play fine via MF, so only AV1 is routed to DS.
+    if (!needsDS) {
+        IMFMediaType* videoType = NULL;
+        hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoType);
+        if (SUCCEEDED(hr) && videoType) {
+            GUID subtype = GUID_NULL;
+            videoType->GetGUID(MF_MT_SUBTYPE, &subtype);
+            videoType->Release();
+            if (subtype == MFVideoFormat_AV1)
+                needsDS = TRUE;
+        }
+    }
+
+    reader->Release();
+    return needsDS;
 }

@@ -46,6 +46,7 @@ No test framework, linter, or CI exists. Runtime behavior can only be tested man
 - **TC lister intercepts most keys** — only Space (play/pause), S (stop), Esc (close) reach the plugin; arrows/F11/M/L/I are consumed by TC.
 - **F3 always creates a new lister tab** (WLX API limitation). Append mode collects files then closes the new tab via `PostMessage(ParentWin, WM_CLOSE)` and returns NULL.
 - **MFPlayer_Open always returns S_OK** even when `QI(IID_IMFVideoDisplayControl)` fails — check `pVideoCtrl != NULL` separately.
+- **AV1 video (webm) stalls in MF** — `MFPlayer_Open/Play` return S_OK but position/duration stay 0.00 (EVR can't present AV1 into the window). DirectShow+VMR-9 plays it. `MFPlayer_NeedsDS()` (renamed from `MFPlayer_AudioNeedsDS`) checks the VIDEO subtype too and routes AV1 to DS; H.264 and VP9 stay on MF. Fixed 2026-08-15 (F17). Test file: `6ix9ine.webm` (AV1+Opus).
 - **On this system pVideoCtrl is always NULL** → `MFPlayer_HasVideo()` always FALSE; MF renders video internally anyway, aspect-ratio helpers are no-ops.
 - **VP9→video-only H.264 switching freezes.** Fix: in `ListLoadNextW` fallback and QuickView paths, call `RecreateVideoWindow(state)` (destroy+recreate the HWND) instead of `DestroyChildVideoWindows`, plus `Sleep(50)` after MF stop and a 500ms cooldown. Only the audio pipeline resets the stale D3D state left on the HWND.
 - **QuickView vs F3**: `IsQuickView` = `GetParent(ParentWin) != NULL`. QuickView must skip playlist load/save and keep `showPlaylist=FALSE`.
