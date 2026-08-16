@@ -27,3 +27,10 @@ CMakeSettings.json
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Test media files (large, not committed)
+*.mp4
+*.avi
+*.mkv
+*.webm
+*.mka

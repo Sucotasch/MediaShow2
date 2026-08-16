@@ -305,8 +305,43 @@ void MFPlayer_UpdateVideoWindow(MFPlayer* player, RECT* rc) {
     p->pVideoCtrl->SetVideoPosition(NULL, &wrc);
 }
 
+// Detect Matroska-family containers (MKV/WEBM) by their EBML header:
+// magic 0x1A45DFA3 + DocType "matroska" / "webm" in the first bytes.
+// Empirically (this system): MFPlayer silently freezes the clock for
+// Matroska files — MFPlayer_Open/Play return S_OK, no error event fires,
+// but the position never advances (Pro.mkv: H.264 video-only; 6ix9ine.webm:
+// AV1+Opus). MP4/AVI files with the SAME codecs play fine via MF, so this
+// is container-specific, not codec-specific. DirectShow + VMR-9 (LAV
+// splitter) plays MKV/WEBM correctly, so route them to DS up front.
+static BOOL MF_IsMatroska(const WCHAR* filePath) {
+    if (!filePath || !filePath[0]) return FALSE;
+    HANDLE h = CreateFileW(filePath, GENERIC_READ,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    BYTE buf[64];
+    DWORD got = 0;
+    BOOL isMatroska = FALSE;
+    if (ReadFile(h, buf, sizeof(buf), &got, NULL) && got >= 8 &&
+        buf[0] == 0x1A && buf[1] == 0x45 && buf[2] == 0xDF && buf[3] == 0xA3) {
+        // DocType string lives in the small EBML header near the start.
+        for (DWORD i = 4; i + 7 < got; i++) {
+            if (memcmp(buf + i, "matroska", 8) == 0 ||
+                memcmp(buf + i, "webm", 4) == 0) {
+                isMatroska = TRUE;
+                break;
+            }
+        }
+    }
+    CloseHandle(h);
+    return isMatroska;
+}
+
 BOOL MFPlayer_NeedsDS(const WCHAR* filePath) {
     if (!filePath || !filePath[0]) return FALSE;
+
+    // Container check first — cheap file sniff, no MF machinery involved.
+    if (MF_IsMatroska(filePath)) return TRUE;
 
     InitMF();
 
@@ -337,11 +372,12 @@ BOOL MFPlayer_NeedsDS(const WCHAR* filePath) {
                    subtype.Data1 == 0x00000009);   // DTS
     }
 
-    // --- Video: codecs MF cannot render into the plugin window ---
-    // Empirically (this system): MFPlayer with a real video HWND stalls the
-    // whole pipeline for AV1 (Open/Play return S_OK, but the clock never
-    // advances — pos/dur stay 0). DirectShow + VMR-9 plays the same file.
-    // VP9 and H.264 play fine via MF, so only AV1 is routed to DS.
+    // --- Video: codecs MF cannot render ---
+    // The 6ix9ine.webm (AV1+Opus) failure was originally attributed to AV1
+    // alone, but the real common factor turned out to be the Matroska
+    // container (handled above via MF_IsMatroska). AV1-in-MP4 has not been
+    // observed, but keep this check as a safety net: if MF cannot decode
+    // AV1 (no MFT decoder), the pipeline stalls exactly like Matroska.
     if (!needsDS) {
         IMFMediaType* videoType = NULL;
         hr = reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &videoType);
