@@ -547,7 +547,9 @@ def parse_tc_line(line):
 ### Решение
 `MFPlayer_NeedsDS` начинается с дешёвой контейнерной проверки `MF_IsMatroska()`: читаются первые байты файла, ищется EBML-магия `1A 45 DF A3` + DocType `matroska`/`webm` → **return TRUE** (DS) до создания source reader'а. Диспетчеризация не менялась — все 3 точки (PlayIndex, ListLoadW, ListLoadNextW) уже используют NeedsDS.
 
-Проверка харнессом: `NeedsDS(Pro.mkv)=1` (было 0), `NeedsDS(7.mp4)=0`, `NeedsDS(6.avi)=0`, `NeedsDS(webm)=1`, `NeedsDS(Neuropulse.mp4)=1` (Opus) — не-Матроска файлы не затронуты. DS играет Pro.mkv. **[TC-тест]** — F3 на Pro.mkv.
+Проверка харнессом: `NeedsDS(Pro.mkv)=1` (было 0), `NeedsDS(7.mp4)=0`, `NeedsDS(6.avi)=0`, `NeedsDS(webm)=1`, `NeedsDS(Neuropulse.mp4)=1` (Opus) — не-Матроска файлы не затронуты. DS играет Pro.mkv.
+
+> ✅ **Подтверждено пользователем в TC (2026-08-16):** Pro.mkv играет и в F3, и в QuickView; другие имеющиеся MKV-файлы (с VP9-видео) тоже играют. Решение покрывает весь контейнер — определение по содержимому (EBML-магия + DocType), не по расширению.
 
 ### Наблюдение (не баг плагина, ограничение харнесса)
 В одном процессе после застойного MF-воспроизведения Matroska следующий `MFCreateMediaPlayer` не может создать media item (7.mp4: isPlaying=0, dur=0). Поодиночке те же файлы играют. В плагине сценарий недостижим (Matroska больше не попадает в MF), но при будущих харнесс-прогонах: не смешивать Matroska и MF-файлы в одном процессе или перезапускать процесс между файлами.
