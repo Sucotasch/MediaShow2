@@ -1151,6 +1151,29 @@ static void RecreateVideoWindow(PluginState* state) {
     SetWindowSubclass(state->hVideoWnd, VideoWndProc, 0, (DWORD_PTR)state);
 }
 
+// Forward declaration (IsQuickView is defined later, near ListLoadW)
+static BOOL IsQuickView(HWND ParentWin);
+
+/* -----------------------------------------------------------------------
+   Restore keyboard focus after an engine switch
+   -----------------------------------------------------------------------
+   Every switch (PlayIndex, ListLoadNextW, track-end) destroys and recreates
+   the video window; Windows then moves the focus away from the plugin, so
+   the shortcuts (Space/S/M/arrows — handled by cbNewMain via VideoWndProc's
+   forwarding) stop reaching us. Restore the designed state: focus on the
+   playlist (audio mode) or the video window — exactly what cbNewMain's
+   WM_SETFOCUS redirect does when TC gives us focus. QuickView is skipped:
+   TC keeps focus on the file panel there and we must not steal it.
+   ----------------------------------------------------------------------- */
+static void RestoreFocus(PluginState* state) {
+    if (!state || !state->hMainWnd || !IsWindow(state->hMainWnd)) return;
+    if (IsQuickView(GetParent(state->hMainWnd))) return;  // QuickView: keep TC's focus
+    if (state->showPlaylist && state->hPlaylist && IsWindow(state->hPlaylist))
+        SetFocus(state->hPlaylist);
+    else if (state->hVideoWnd && IsWindow(state->hVideoWnd))
+        SetFocus(state->hVideoWnd);
+}
+
 /* -----------------------------------------------------------------------
    Navigate to a playlist item (shared by IDM_PREV, IDM_NEXT, double-click,
    and the WM_PLAYER_TRACK_END handler)
@@ -1231,6 +1254,7 @@ static void PlayIndex(PluginState* state, int idx) {
     UpdateStatus(state);
     UpdateSeekbar(state);
     UpdateListerTitle(state);      // TC doesn't know we switched — update title
+    RestoreFocus(state);           // keep keyboard shortcuts alive after the switch
     // Keep switchInProgress=TRUE, reset after cooldown timer
     SetTimer(state->hMainWnd, IDT_COOLDOWN, 500, NULL);
 }
@@ -2898,6 +2922,7 @@ int __stdcall ListLoadNextW(HWND ParentWin, HWND PluginWin, WCHAR* FileToLoad, i
     UpdateStatus(state);
     UpdateSeekbar(state);
     UpdateListerTitle(state);      // keep title in sync on n/p navigation too
+    RestoreFocus(state);           // keep keyboard shortcuts alive after n/p
     return LISTPLUGIN_OK;
 }
 
